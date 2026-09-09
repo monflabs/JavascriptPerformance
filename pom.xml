@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Copyright (c) 2026, Philippe Riand. All rights reserved.
+DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+
+This code is free software; you can redistribute it and/or modify it
+under the terms of the GNU General Public License version 2 only, as
+published by the Free Software Foundation.  Philippe Riand designates this
+particular file as subject to the "Classpath" exception as provided
+in the LICENSE file that accompanied this code.
+
+This code is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+version 2 for more details (a copy is included in the LICENSE file that
+accompanied this code).
+
+You should have received a copy of the GNU General Public License version
+2 along with this work; if not, write to the Free Software Foundation,
+Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>org.monflabs.performance</groupId>
+  <artifactId>javascript-performance</artifactId>
+  <version>1.0.0-SNAPSHOT</version>
+  <packaging>jar</packaging>
+
+  <name>JavascriptPerformance</name>
+  <description>
+    Runs the same benchmark suites (Octane, SunSpider, ubench, the V8 benchmarks) against
+    the Monflabs and upstream OpenJDK Nashorn forks, GraalJS and Rhino, and reports
+    execution time compared across engines. Built as an executable jar.
+  </description>
+  <url>https://github.com/monflabs/JavascriptPerformance</url>
+
+  <licenses>
+    <license>
+      <name>GNU General Public License v2.0 w/Classpath exception</name>
+      <url>https://github.com/monflabs/JavascriptPerformance/blob/main/LICENSE</url>
+    </license>
+  </licenses>
+
+  <developers>
+    <developer>
+      <id>priand</id>
+      <name>Philippe Riand</name>
+      <url>https://github.com/priand</url>
+      <organization>Monflabs</organization>
+      <organizationUrl>https://github.com/monflabs</organizationUrl>
+    </developer>
+  </developers>
+
+  <scm>
+    <connection>scm:git:https://github.com/monflabs/JavascriptPerformance.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/monflabs/JavascriptPerformance.git</developerConnection>
+    <url>https://github.com/monflabs/JavascriptPerformance/tree/main</url>
+  </scm>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+    <!-- Matches the nashorn-core dependency below: the compiler needs to be at least
+         this new, and nasgen's own build (a sibling checkout) requires the same JDK to
+         run at all. -->
+    <java.version>25</java.version>
+
+    <!-- Peer checkout of https://github.com/monflabs/nashorn: build and `mvn install`
+         its core module first (see README) - this fork is not on Maven Central. -->
+    <nashorn.monflabs.version>2026.0.0</nashorn.monflabs.version>
+    <nashorn.openjdk.version>15.7</nashorn.openjdk.version>
+    <rhino.version>1.8.0</rhino.version>
+    <graalvm.version>25.0.1</graalvm.version>
+    <testng.version>7.10.2</testng.version>
+
+    <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
+    <maven.surefire.plugin.version>3.2.5</maven.surefire.plugin.version>
+    <maven.shade.plugin.version>3.4.1</maven.shade.plugin.version>
+    <maven.enforcer.plugin.version>3.5.0</maven.enforcer.plugin.version>
+
+    <!-- The smoke test actually times real benchmark runs across every engine, so it's
+         opt-in (-Pperformance-tests) rather than part of a plain `mvn package`. -->
+    <performance.skipTests>true</performance.skipTests>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.monflabs.nashorn</groupId>
+      <artifactId>nashorn-core</artifactId>
+      <version>${nashorn.monflabs.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.openjdk.nashorn</groupId>
+      <artifactId>nashorn-core</artifactId>
+      <version>${nashorn.openjdk.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.mozilla</groupId>
+      <artifactId>rhino</artifactId>
+      <version>${rhino.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.mozilla</groupId>
+      <artifactId>rhino-tools</artifactId>
+      <version>${rhino.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.graalvm.sdk</groupId>
+      <artifactId>graal-sdk</artifactId>
+      <version>${graalvm.version}</version>
+    </dependency>
+    <dependency>
+      <!-- org.graalvm.js:js is a packaging=pom facade (no jar of its own) that pulls in the
+           real js-language implementation and truffle-runtime at runtime scope - GraalJS 24+
+           split the engine this way. <type>pom</type> is required or Maven looks for a
+           nonexistent js-25.0.1.jar and fails to resolve. -->
+      <groupId>org.graalvm.js</groupId>
+      <artifactId>js</artifactId>
+      <version>${graalvm.version}</version>
+      <type>pom</type>
+    </dependency>
+    <dependency>
+      <!-- Direct dependency (rather than relying on the transitive one pulled in by
+           org.graalvm.js:js) so GraalJSExecutor can call Truffle.getRuntime() at compile
+           time, to detect whether a real Graal compiler backs this JVM. -->
+      <groupId>org.graalvm.truffle</groupId>
+      <artifactId>truffle-api</artifactId>
+      <version>${graalvm.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.testng</groupId>
+      <artifactId>testng</artifactId>
+      <version>${testng.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <!--
+          nashorn-core (both this fork's and upstream's) is only usable on the JDK it was
+          built/targeted for; this project's own sources need nothing newer, but running on
+          an older JVM would load an incompatible nashorn-core.
+        -->
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <version>${maven.enforcer.plugin.version}</version>
+        <executions>
+          <execution>
+            <id>enforce-jdk</id>
+            <goals><goal>enforce</goal></goals>
+            <configuration>
+              <rules>
+                <requireJavaVersion>
+                  <version>[${java.version},)</version>
+                  <message>Build and run on JDK ${java.version} or newer.</message>
+                </requireJavaVersion>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>${maven.compiler.plugin.version}</version>
+        <configuration>
+          <release>${java.version}</release>
+          <compilerArgs>
+            <arg>-Xlint:all</arg>
+            <arg>-Xdiags:verbose</arg>
+          </compilerArgs>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>${maven.surefire.plugin.version}</version>
+        <configuration>
+          <useModulePath>false</useModulePath>
+          <argLine>-ea -esa</argLine>
+          <skipTests>${performance.skipTests}</skipTests>
+        </configuration>
+      </plugin>
+      <plugin>
+        <!-- java -jar target/javascript-performance-${project.version}-all.jar -->
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>${maven.shade.plugin.version}</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals><goal>shade</goal></goals>
+            <configuration>
+              <shadedArtifactAttached>true</shadedArtifactAttached>
+              <shadedClassifierName>all</shadedClassifierName>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <filters>
+                <filter>
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <exclude>module-info.class</exclude>
+                    <exclude>META-INF/*.SF</exclude>
+                    <exclude>META-INF/*.DSA</exclude>
+                    <exclude>META-INF/*.RSA</exclude>
+                  </excludes>
+                </filter>
+              </filters>
+              <transformers>
+                <!--
+                  GraalJS registers its TruffleLanguage/engine providers under
+                  META-INF/services; without merging those service files across the
+                  shaded jars, Context.newBuilder("js") silently fails to find the "js"
+                  language inside the fat jar even though it works on the module's own
+                  classpath during `mvn test`.
+                -->
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                  <mainClass>org.monflabs.nashorn.performance.Performance</mainClass>
+                  <manifestEntries>
+                    <!-- Truffle ships Multi-Release classes (META-INF/versions/*); losing this
+                         attribute on shading makes Engine$ImplHolder throw InternalError at
+                         startup ("Multi-Release classes are not configured correctly"). -->
+                    <Multi-Release>true</Multi-Release>
+                  </manifestEntries>
+                </transformer>
+              </transformers>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <profile>
+      <!-- mvn package -Pperformance-tests
+           Runs PerformanceSmokeTest, which times real (if tiny) benchmark executions
+           across every engine - too slow to be part of a plain `mvn package`. -->
+      <id>performance-tests</id>
+      <properties>
+        <performance.skipTests>false</performance.skipTests>
+      </properties>
+    </profile>
+  </profiles>
+</project>

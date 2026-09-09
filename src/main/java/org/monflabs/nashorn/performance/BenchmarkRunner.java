@@ -1,0 +1,294 @@
+/*
+ * Copyright (c) 2026, Philippe Riand. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Philippe Riand designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+package org.monflabs.nashorn.performance;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystemAlreadyExistsException;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import org.monflabs.nashorn.performance.BenchmarkCollector.Status;
+import org.monflabs.nashorn.performance.ScriptExecutor.ENGINE;
+import org.monflabs.nashorn.performance.graaljs.GraalJSExecutor;
+import org.monflabs.nashorn.performance.nashorn.MonflabsNashornExecutor;
+import org.monflabs.nashorn.performance.nashorn.OpenjdkNashornExecutor;
+import org.monflabs.nashorn.performance.rhino.RhinoExecutor;
+
+/**
+ * Walks a vendored benchmark suite (a folder of scripts under {@code /benchmarks} on the
+ * classpath) and runs each file, once per engine, timing execution only - {@code base.js}/
+ * {@code run.js}/multi-part companions are concatenated with the benchmark and compiled once,
+ * outside the timed loop.
+ */
+public class BenchmarkRunner {
+
+    private static final int DEFAULT_WARMUP = 2;
+    private static final int DEFAULT_ITERATIONS = 5;
+
+    public static final ENGINE[] ALL_ENGINES = ENGINE.values();
+
+    private static final Map<String, FileSystem> JAR_FILESYSTEMS = new ConcurrentHashMap<>();
+
+    private final BenchmarkCollector collector = new BenchmarkCollector();
+    private final ENGINE[] engines;
+
+    private int warmupIterations = DEFAULT_WARMUP;
+    private int runIterations = DEFAULT_ITERATIONS;
+
+    public BenchmarkRunner() {
+        this(ALL_ENGINES);
+    }
+
+    public BenchmarkRunner(ENGINE... engines) {
+        this.engines = engines;
+    }
+
+    public ENGINE[] getEngines() {
+        return engines;
+    }
+
+    public BenchmarkCollector getCollector() {
+        return collector;
+    }
+
+    public int getWarmupIterations() {
+        return warmupIterations;
+    }
+
+    public void setWarmupIterations(int warmupIterations) {
+        this.warmupIterations = warmupIterations;
+    }
+
+    public int getRunIterations() {
+        return runIterations;
+    }
+
+    public void setRunIterations(int runIterations) {
+        this.runIterations = runIterations;
+    }
+
+    public static ScriptExecutor createEngine(ENGINE engine) {
+        return switch (engine) {
+            case NASHORN_MONFLABS -> new MonflabsNashornExecutor();
+            case NASHORN_OPENJDK -> new OpenjdkNashornExecutor();
+            case RHINO_INTERPRETED -> new RhinoExecutor(false);
+            case RHINO_COMPILED -> new RhinoExecutor(true);
+            case GRAALJS_INTERPRETED -> new GraalJSExecutor(false);
+            case GRAALJS_COMPILED -> new GraalJSExecutor(true);
+        };
+    }
+
+    /** Resolves a vendored suite folder (e.g. {@code "octane-master"}) on the classpath, whether
+     *  exploded (tests, IDE) or packed inside the shaded jar. */
+    static Path resolveSuiteDir(String suite) throws IOException {
+        URL url = BenchmarkRunner.class.getResource("/benchmarks/" + suite);
+        if (url == null) {
+            throw new IllegalArgumentException("Unknown benchmark suite: " + suite);
+        }
+        try {
+            URI uri = url.toURI();
+            if (!"jar".equals(uri.getScheme())) {
+                return Path.of(uri);
+            }
+            String jarUri = uri.toString();
+            int bang = jarUri.indexOf("!/");
+            String fsKey = jarUri.substring(0, bang);
+            String innerPath = jarUri.substring(bang + 1);
+            FileSystem fs = JAR_FILESYSTEMS.computeIfAbsent(fsKey, key -> {
+                try {
+                    return FileSystems.newFileSystem(URI.create(key), Map.of());
+                } catch (FileSystemAlreadyExistsException already) {
+                    return FileSystems.getFileSystem(URI.create(key));
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            });
+            return fs.getPath(innerPath);
+        } catch (URISyntaxException e) {
+            throw new IOException(e);
+        }
+    }
+
+    public void runSuite(String suite) throws IOException {
+        runSuite(suite, null);
+    }
+
+    public void runSuite(String suite, Predicate<Path> filter) throws IOException {
+        Path folder = resolveSuiteDir(suite);
+        List<Path> allFiles;
+        try (Stream<Path> stream = Files.walk(folder, 1)) {
+            allFiles = stream
+                    .filter(Files::isRegularFile)
+                    .filter(f -> f.getFileName().toString().endsWith(".js"))
+                    .filter(f -> !"base.js".equals(f.getFileName().toString()))
+                    .filter(f -> !"run.js".equals(f.getFileName().toString()))
+                    .sorted()
+                    .collect(Collectors.toList());
+        }
+
+        Map<Path, List<Path>> groups = groupMultiPartFiles(allFiles);
+        for (Map.Entry<Path, List<Path>> entry : groups.entrySet()) {
+            Path mainFile = entry.getKey();
+            if (filter == null || filter.test(mainFile)) {
+                runFile(suite, folder, mainFile, entry.getValue());
+            }
+        }
+    }
+
+    private static String getBaseName(Path file) {
+        String name = file.getFileName().toString();
+        int dot = name.lastIndexOf('.');
+        return dot >= 0 ? name.substring(0, dot) : name;
+    }
+
+    /** Groups a multi-part benchmark (e.g. {@code gbemu-part1.js}/{@code gbemu-part2.js}) under
+     *  its first file, so the parts are concatenated and run as a single benchmark. */
+    static Map<Path, List<Path>> groupMultiPartFiles(List<Path> files) {
+        Map<Path, List<Path>> groups = new LinkedHashMap<>();
+        List<Path> consumed = new ArrayList<>();
+
+        for (Path file : files) {
+            if (consumed.contains(file)) continue;
+            String name = getBaseName(file);
+
+            List<Path> companions = new ArrayList<>();
+            for (Path other : files) {
+                if (other.equals(file) || consumed.contains(other)) continue;
+                String otherName = getBaseName(other);
+                if (otherName.startsWith(name + "-")) {
+                    companions.add(other);
+                }
+            }
+            if (!companions.isEmpty()) {
+                groups.put(file, companions);
+                consumed.addAll(companions);
+            }
+        }
+
+        List<Path> remaining = new ArrayList<>();
+        for (Path file : files) {
+            if (!groups.containsKey(file) && !consumed.contains(file)) {
+                remaining.add(file);
+            }
+        }
+        for (int i = 0; i < remaining.size(); i++) {
+            Path file = remaining.get(i);
+            if (consumed.contains(file)) continue;
+            String name = getBaseName(file);
+            int dash = name.lastIndexOf('-');
+            if (dash > 0) {
+                String prefix = name.substring(0, dash);
+                List<Path> peers = new ArrayList<>();
+                peers.add(file);
+                for (int j = i + 1; j < remaining.size(); j++) {
+                    Path other = remaining.get(j);
+                    if (consumed.contains(other)) continue;
+                    String otherName = getBaseName(other);
+                    int otherDash = otherName.lastIndexOf('-');
+                    if (otherDash > 0 && otherName.substring(0, otherDash).equals(prefix)) {
+                        peers.add(other);
+                    }
+                }
+                if (peers.size() > 1) {
+                    Path main = peers.get(0);
+                    List<Path> companionPeers = new ArrayList<>(peers.subList(1, peers.size()));
+                    groups.put(main, companionPeers);
+                    consumed.addAll(companionPeers);
+                    continue;
+                }
+            }
+            groups.put(file, List.of());
+        }
+
+        return groups;
+    }
+
+    private static String readString(Path path) throws IOException {
+        return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+    }
+
+    private void runFile(String suite, Path folder, Path file, List<Path> companionFiles) throws IOException {
+        String fileName = file.getFileName().toString();
+        System.out.println("-----------------------------------------------------");
+        System.out.println(suite + " :: " + fileName);
+
+        for (ENGINE engine : engines) {
+            System.out.println("START " + engine.name());
+            ScriptExecutor ex = createEngine(engine);
+            if (!ex.isSupported()) {
+                collector.addResult(suite, fileName, engine, Status.NOT_AVAILABLE, 0, 0);
+                System.out.println("    " + engine.name() + " *** N/A (not available on this JVM) ***");
+                System.out.println("END " + engine.name());
+                continue;
+            }
+
+            try {
+                StringBuilder sb = new StringBuilder();
+                Path baseJs = folder.resolve("base.js");
+                if (Files.exists(baseJs)) {
+                    sb.append(readString(baseJs)).append('\n');
+                }
+                for (Path companion : companionFiles) {
+                    sb.append(readString(companion)).append('\n');
+                }
+                sb.append(readString(file));
+                Path runJs = folder.resolve("run.js");
+                if (Files.exists(runJs)) {
+                    sb.append('\n').append(readString(runJs));
+                }
+
+                String script = sb.toString();
+                ex.init(script, file.toString());
+                try {
+                    PerformanceWatch watch = new PerformanceWatch(fileName);
+                    watch.runWithException(ex::run, runIterations, warmupIterations);
+                    long wallMs = watch.getTotalWallTime() / PerformanceWatch.NANOSECONDS_PER_MILLI;
+                    long cpuMs = watch.getTotalCpuTime() / PerformanceWatch.NANOSECONDS_PER_MILLI;
+                    collector.addResult(suite, fileName, engine, Status.OK, wallMs, cpuMs);
+                    System.out.println("    " + engine.name() + ", " + wallMs + "ms");
+                } finally {
+                    ex.terminate();
+                }
+            } catch (Throwable t) {
+                collector.addResult(suite, fileName, engine, Status.FAILED, 0, 0);
+                System.out.println("    " + engine.name() + " *** FAILED ***, " + t);
+            } finally {
+                System.out.println("END " + engine.name());
+            }
+        }
+        System.out.println("-----------------------------------------------------");
+    }
+}
