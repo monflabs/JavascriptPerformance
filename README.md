@@ -3,10 +3,12 @@
 Runs the same benchmark suites — **Octane**, **SunSpider**, **ubench**, and the **V8
 benchmarks** — against the [Monflabs Nashorn fork](https://github.com/monflabs/nashorn),
 upstream OpenJDK Nashorn, Rhino (interpreted and compiled), GraalJS (interpreted, and
-compiled when a real GraalVM compiler is present), and real V8 (via the
-[Javet](https://github.com/caoccao/Javet) JNI binding), and reports execution time compared
-across engines. Only `run()` is timed; parsing/compiling a benchmark happens once, outside
-the timed loop. The project vendors its own copy of the benchmark scripts under
+compiled when a real GraalVM compiler is present), real V8 (via the
+[Javet](https://github.com/caoccao/Javet) JNI binding), and Monflabs
+[GaltaJS](https://github.com/monflabs/galta) (interpreted, and compiled - GaltaJS transpiles the
+script to Java source and compiles/loads it as a real class), and reports execution time
+compared across engines. Only `run()` is timed; parsing/compiling a benchmark happens once,
+outside the timed loop. The project vendors its own copy of the benchmark scripts under
 `src/main/resources/benchmarks/` — nothing is fetched at build time.
 
 ## Prerequisite: a built `nashorn-core` (Monflabs fork)
@@ -23,6 +25,25 @@ mvn -pl core -am install -DskipTests
 That installs `org.monflabs.nashorn:nashorn-core` into your local `~/.m2` repository at
 whatever version `nashorn.monflabs.version` in this project's `pom.xml` names. Bump that
 property when you rebuild against a newer fork revision.
+
+## Prerequisite: a built GaltaJS (`org.monflabs.galta:js` + `:filesystem`)
+
+Neither is published to Maven Central, not even as a SNAPSHOT. Build and `mvn install` a peer
+checkout of the [Galta-Java](https://github.com/monflabs/galta) reactor first:
+
+```bash
+cd ../Galta-Java/galta   # peer checkout, next to this project
+mvn install -DskipTests
+```
+
+That installs every `org.monflabs.galta:*` artifact this project needs
+(`js`, `filesystem`, and their own transitive `json`/`javacompiler`/`utilities`) into your local
+`~/.m2` repository at whatever version `galtajs.version` in this project's `pom.xml` names.
+
+`GALTAJS_COMPILED` transpiles the benchmark to Java source and compiles/loads it as a real class
+(all in-memory - an NIO `MemoryFileSystem`, nothing touches disk); `GALTAJS_INTERPRETED` walks
+the AST directly. Both need no native library and are always available once the peer checkout is
+installed.
 
 ## Prerequisite: none, for V8 — but check your platform is covered
 
@@ -69,7 +90,7 @@ Narrow it down with:
 ```bash
 java -jar target/javascript-performance-1.0.0-SNAPSHOT-all.jar \
   --suites=ubench,sunspider \
-  --engines=NASHORN_MONFLABS,NASHORN_OPENJDK,RHINO_INTERPRETED,RHINO_COMPILED,GRAALJS_INTERPRETED,GRAALJS_COMPILED,V8_JAVET \
+  --engines=NASHORN_MONFLABS,NASHORN_OPENJDK,RHINO_INTERPRETED,RHINO_COMPILED,GRAALJS_INTERPRETED,GRAALJS_COMPILED,V8_JAVET,GALTAJS_INTERPRETED,GALTAJS_COMPILED \
   --warmup=1 --iterations=2 \
   --report=/tmp/report.csv
 ```
@@ -160,6 +181,12 @@ with no such convention (SunSpider, ubench) always reports a blank Score - `Benc
 appends a trailing `undefined;` to their concatenated script precisely so an incidental numeric
 last-statement value in one of their benchmark files can never leak through as a spurious
 score - and their wall/cpu time remains the valid metric, as before.
+
+`GALTAJS_COMPILED` always reports a blank Score too, for a different reason: GaltaJS's
+transpiled/compiled runtime only surfaces a script's completion value through an explicit
+`return`, never from a bare top-level expression statement - so `run.js`'s trailing `lastScore;`
+is never captured in that mode. `GALTAJS_INTERPRETED` has no such limitation and reports Score
+normally; both modes' wall/cpu time are unaffected and remain valid.
 
 ## History
 

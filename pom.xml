@@ -76,6 +76,11 @@ Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
     <rhino.version>1.8.0</rhino.version>
     <graalvm.version>25.0.1</graalvm.version>
     <javet.version>6.0.0</javet.version>
+
+    <!-- Peer checkout of the Galta-Java reactor (org.monflabs.galta:parent-js): build and
+         `mvn install` it first - this engine is not on Maven Central, not even as a SNAPSHOT. -->
+    <galtajs.version>0.0.1-SNAPSHOT</galtajs.version>
+
     <testng.version>7.10.2</testng.version>
 
     <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
@@ -138,6 +143,19 @@ Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
       <groupId>com.caoccao.javet</groupId>
       <artifactId>javet</artifactId>
       <version>${javet.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.monflabs.galta</groupId>
+      <artifactId>js</artifactId>
+      <version>${galtajs.version}</version>
+    </dependency>
+    <dependency>
+      <!-- js:pom declares this only at test scope, but GaltaJSTranspiledExecutor needs
+           MemoryFileSystem (an in-memory NIO filesystem) at compile scope to hold the
+           transpiled Java source/class files without touching disk. -->
+      <groupId>org.monflabs.galta</groupId>
+      <artifactId>filesystem</artifactId>
+      <version>${galtajs.version}</version>
     </dependency>
     <dependency>
       <groupId>org.testng</groupId>

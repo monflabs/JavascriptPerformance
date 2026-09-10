@@ -38,7 +38,7 @@ import org.monflabs.nashorn.performance.ScriptExecutor.ENGINE;
  *
  * <pre>
  *   --suites=octane,sunspider,ubench,v8-benchmarks   (default: all four)
- *   --engines=NASHORN_MONFLABS,NASHORN_OPENJDK,...    (default: all six)
+ *   --engines=NASHORN_MONFLABS,NASHORN_OPENJDK,...    (default: every ScriptExecutor.ENGINE)
  *   --octane-benchmarks=box2d,crypto,...              (default: an 11-file subset)
  *   --warmup=N                                        (default: 2)
  *   --iterations=N                                    (default: 5)

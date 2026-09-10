@@ -43,6 +43,8 @@ import java.util.stream.Stream;
 
 import org.monflabs.nashorn.performance.BenchmarkCollector.Status;
 import org.monflabs.nashorn.performance.ScriptExecutor.ENGINE;
+import org.monflabs.nashorn.performance.galtajs.GaltaJSCompiledExecutor;
+import org.monflabs.nashorn.performance.galtajs.GaltaJSExecutor;
 import org.monflabs.nashorn.performance.graaljs.GraalJSExecutor;
 import org.monflabs.nashorn.performance.javet.JavetExecutor;
 import org.monflabs.nashorn.performance.nashorn.MonflabsNashornExecutor;
@@ -111,6 +113,8 @@ public class BenchmarkRunner {
             case GRAALJS_INTERPRETED -> new GraalJSExecutor(false);
             case GRAALJS_COMPILED -> new GraalJSExecutor(true);
             case V8_JAVET -> new JavetExecutor();
+            case GALTAJS_INTERPRETED -> new GaltaJSExecutor();
+            case GALTAJS_COMPILED -> new GaltaJSCompiledExecutor();
         };
     }
 
