@@ -266,7 +266,7 @@ public class BenchmarkRunner {
             System.out.println("START " + engine.name());
             ScriptExecutor ex = createEngine(engine);
             if (!ex.isSupported()) {
-                collector.addResult(suite, fileName, engine, Status.NOT_AVAILABLE, 0, 0);
+                collector.addResult(suite, fileName, engine, Status.NOT_AVAILABLE, 0, 0, null);
                 System.out.println("    " + engine.name() + " *** N/A (not available on this JVM) ***");
                 System.out.println("END " + engine.name());
                 continue;
@@ -285,6 +285,12 @@ public class BenchmarkRunner {
                 Path runJs = folder.resolve("run.js");
                 if (Files.exists(runJs)) {
                     sb.append('\n').append(readString(runJs));
+                } else {
+                    // Only Octane and v8-benchmarks-v6 have a run.js that ends on a deliberate
+                    // `lastScore;` expression (see ScriptExecutor.getLastScore()). Without this,
+                    // a suite with no run.js - SunSpider, ubench - would report whatever its own
+                    // benchmark file's last statement happens to evaluate to as a spurious score.
+                    sb.append("\nundefined;");
                 }
 
                 String script = sb.toString();
@@ -294,13 +300,13 @@ public class BenchmarkRunner {
                     watch.runWithException(ex::run, runIterations, warmupIterations);
                     long wallMs = watch.getTotalWallTime() / PerformanceWatch.NANOSECONDS_PER_MILLI;
                     long cpuMs = watch.getTotalCpuTime() / PerformanceWatch.NANOSECONDS_PER_MILLI;
-                    collector.addResult(suite, fileName, engine, Status.OK, wallMs, cpuMs);
+                    collector.addResult(suite, fileName, engine, Status.OK, wallMs, cpuMs, ex.getLastScore());
                     System.out.println("    " + engine.name() + ", " + wallMs + "ms");
                 } finally {
                     ex.terminate();
                 }
             } catch (Throwable t) {
-                collector.addResult(suite, fileName, engine, Status.FAILED, 0, 0);
+                collector.addResult(suite, fileName, engine, Status.FAILED, 0, 0, null);
                 System.out.println("    " + engine.name() + " *** FAILED ***, " + t);
             } finally {
                 System.out.println("END " + engine.name());

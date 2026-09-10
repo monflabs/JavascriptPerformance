@@ -70,6 +70,7 @@ function PrintResult(name, result) {
 function PrintError(name, error) {
 }
 function PrintScore(score) {
+  lastScore = score;
 }
 
 

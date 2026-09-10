@@ -62,6 +62,7 @@ public class BenchmarkCollector {
         final Status[] status = new Status[ENGINES.length];
         final long[] wallTimeMs = new long[ENGINES.length];
         final long[] cpuTimeMs = new long[ENGINES.length];
+        final Double[] score = new Double[ENGINES.length];
 
         Result(String suite, String file) {
             this.suite = suite;
@@ -71,12 +72,20 @@ public class BenchmarkCollector {
 
     private final Map<String, Result> results = new LinkedHashMap<>();
 
-    public void addResult(String suite, String file, ENGINE engine, Status status, long wallTimeMs, long cpuTimeMs) {
+    /**
+     * @param score the benchmark's own internally computed score (see
+     *              {@link org.monflabs.nashorn.performance.ScriptExecutor#getLastScore()}) -
+     *              {@code null} when the suite has no such convention (SunSpider, ubench) or the
+     *              run didn't produce one.
+     */
+    public void addResult(String suite, String file, ENGINE engine, Status status, long wallTimeMs, long cpuTimeMs,
+            Double score) {
         String key = Result.makeKey(suite, file);
         Result r = results.computeIfAbsent(key, k -> new Result(suite, file));
         r.status[engine.ordinal()] = status;
         r.wallTimeMs[engine.ordinal()] = wallTimeMs;
         r.cpuTimeMs[engine.ordinal()] = cpuTimeMs;
+        r.score[engine.ordinal()] = score;
     }
 
     private Result[] sortedResults() {
@@ -99,12 +108,30 @@ public class BenchmarkCollector {
         };
     }
 
+    /** Octane/v8-benchmarks-v6's own significant-digit formatting (higher is better) - see
+     *  BenchmarkSuite.FormatScore in their vendored base.js. */
+    private static String formatScore(double value) {
+        return value > 100 ? Long.toString(Math.round(value)) : String.format("%.3g", value);
+    }
+
+    private static String scoreCell(Status status, Double score) {
+        if (status == null) {
+            return "";
+        }
+        return switch (status) {
+            case OK -> score == null ? "" : formatScore(score);
+            case FAILED -> "FAILED";
+            case NOT_AVAILABLE -> "N/A";
+        };
+    }
+
     public String csv() {
         StringBuilder b = new StringBuilder();
         b.append("Suite,File");
         for (ENGINE engine : ENGINES) {
             b.append(',').append(engine.name()).append(" WallTime(ms)");
             b.append(',').append(engine.name()).append(" CpuTime(ms)");
+            b.append(',').append(engine.name()).append(" Score");
         }
         b.append('\n');
 
@@ -113,6 +140,7 @@ public class BenchmarkCollector {
             for (int i = 0; i < ENGINES.length; i++) {
                 b.append(',').append(cell(r.status[i], r.wallTimeMs[i]));
                 b.append(',').append(cell(r.status[i], r.cpuTimeMs[i]));
+                b.append(',').append(scoreCell(r.status[i], r.score[i]));
             }
             b.append('\n');
         }
@@ -191,12 +219,14 @@ public class BenchmarkCollector {
         b.append("<table>\n<tr><th>Suite</th><th>File</th>");
         for (ENGINE engine : ENGINES) {
             b.append("<th>").append(escapeHtml(engine.name())).append(" wall(ms)</th>");
+            b.append("<th>").append(escapeHtml(engine.name())).append(" score</th>");
         }
         b.append("</tr>\n");
         for (Result r : list) {
             b.append("<tr><td>").append(escapeHtml(r.suite)).append("</td><td>").append(escapeHtml(r.file)).append("</td>");
             for (int i = 0; i < ENGINES.length; i++) {
                 b.append("<td>").append(escapeHtml(cell(r.status[i], r.wallTimeMs[i]))).append("</td>");
+                b.append("<td>").append(escapeHtml(scoreCell(r.status[i], r.score[i]))).append("</td>");
             }
             b.append("</tr>\n");
         }

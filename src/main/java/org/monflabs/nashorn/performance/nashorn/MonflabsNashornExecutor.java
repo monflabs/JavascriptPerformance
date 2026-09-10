@@ -64,6 +64,6 @@ public class MonflabsNashornExecutor extends ScriptExecutor {
 
     @Override
     public void run() throws Exception {
-        script.eval();
+        setLastScore(script.eval());
     }
 }

@@ -26,6 +26,8 @@ import com.caoccao.javet.interception.logging.JavetStandardConsoleInterceptor;
 import com.caoccao.javet.interop.V8Host;
 import com.caoccao.javet.interop.V8Runtime;
 import com.caoccao.javet.interop.options.V8RuntimeOptions;
+import com.caoccao.javet.values.V8Value;
+import com.caoccao.javet.values.primitive.V8ValuePrimitive;
 import com.caoccao.javet.values.reference.V8Script;
 import org.monflabs.nashorn.performance.ScriptExecutor;
 
@@ -133,6 +135,12 @@ public class JavetExecutor extends ScriptExecutor {
 
     @Override
     public void run() throws Exception {
-        script.execute(false);
+        // resultRequired=true so Octane/v8-benchmarks-v6's trailing `lastScore;` expression comes
+        // back (see ScriptExecutor.getLastScore()); a V8Value must always be closed, even a
+        // primitive's (whose close() is a documented no-op - it holds no native handle - but a
+        // reference-type result, e.g. a file whose last statement isn't a primitive, does).
+        try (V8Value result = script.execute(true)) {
+            setLastScore(result instanceof V8ValuePrimitive<?> primitive ? primitive.getValue() : null);
+        }
     }
 }

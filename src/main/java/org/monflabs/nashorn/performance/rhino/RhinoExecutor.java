@@ -73,6 +73,6 @@ public class RhinoExecutor extends ScriptExecutor {
 
     @Override
     public void run() throws Exception {
-        script.exec(context, scope);
+        setLastScore(script.exec(context, scope));
     }
 }

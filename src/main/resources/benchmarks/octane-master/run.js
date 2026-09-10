@@ -50,6 +50,7 @@ load(base_dir + 'typescript-compiler.js');
 */
 
 var success = true;
+var lastScore;
 
 function PrintResult(name, result) {
   print(name + ': ' + result);
@@ -63,6 +64,7 @@ function PrintError(name, error) {
 
 
 function PrintScore(score) {
+  lastScore = score;
   if (success) {
     print('----');
     print('Score (version ' + BenchmarkSuite.version + '): ' + score);
@@ -76,3 +78,5 @@ BenchmarkSuite.config.doDeterministic = undefined;
 BenchmarkSuite.RunSuites({ NotifyResult: PrintResult,
                            NotifyError: PrintError,
                            NotifyScore: PrintScore });
+
+lastScore;

@@ -100,8 +100,9 @@ the vendored benchmark files rely on.
 ## Visual report
 
 Every run also writes a self-contained HTML report (`--html-report=<path>`, default
-`target/performance-report.html`) — a data table identical in content to the CSV, followed by
-one bar chart per (suite, file), one bar per engine, comparing wall time. No external
+`target/performance-report.html`) — a data table with the same wall-time and Score columns as
+the CSV (see Methodology), followed by one bar chart per (suite, file), one bar per engine,
+comparing wall time. No external
 stylesheet, script, image, or network fetch: `BenchmarkCollector.toHtmlReport()` renders plain
 `<table>` markup and inline SVG `<rect>`/`<text>` elements directly from the collected results,
 so the file opens in any browser as-is, with no build step or dependency beyond what this
@@ -136,6 +137,29 @@ distinct from `NOT_AVAILABLE`.
 
 Each engine gets its own fresh `ScriptExecutor` instance per file (a new JS realm/context),
 so no benchmark's state or warmup leaks into another file or another engine.
+
+### Wall/cpu time is not a valid cross-engine metric for Octane and v8-benchmarks-v6
+
+Octane and the V8 Benchmark Suite each self-calibrate their own internal timing loop to run
+for a fixed wall-clock window rather than a fixed amount of work: Octane's `RunStep`/`Measure`
+loop in `base.js` keeps calling `benchmark.run()` while `elapsed < 1000` (ms); the V8 Benchmark
+Suite's equivalent loop uses `MIN_TIME = 10000`. So `run()`'s own wall/cpu time reported by
+this harness for those two suites converges to a near-constant multiple of that window on
+every engine, fast or slow — it measures the calibration window, not engine speed, and the
+`WallTime(ms)`/`CpuTime(ms)` columns for those two suites specifically are **not** meaningful
+for comparing engines (they still are for SunSpider and ubench, which have no such loop).
+
+The suite's own internally computed benchmark score - a geometric mean across its component
+benchmarks, higher is better, the same number that suite would print as
+`Score (version N): <score>` - is the metric that actually reflects engine speed for these two
+suites. Both vendored `run.js` files (under `src/main/resources/benchmarks/`) end on a
+deliberate trailing `lastScore;` expression exposing that score as the script's own execution
+result, which `ScriptExecutor.getLastScore()` retrieves per run and the CSV/HTML report surface
+as a **Score** column, one per engine, alongside the existing wall/cpu time columns. A suite
+with no such convention (SunSpider, ubench) always reports a blank Score - `BenchmarkRunner`
+appends a trailing `undefined;` to their concatenated script precisely so an incidental numeric
+last-statement value in one of their benchmark files can never leak through as a spurious
+score - and their wall/cpu time remains the valid metric, as before.
 
 ## History
 
