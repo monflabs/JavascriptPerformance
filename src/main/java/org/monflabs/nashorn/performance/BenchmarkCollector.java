@@ -44,7 +44,7 @@ public class BenchmarkCollector {
     // Indexed by ENGINE.ordinal(); one fixed color per engine so the same engine reads the same
     // color across every chart in the report.
     private static final String[] ENGINE_COLORS = {
-            "#2563eb", "#7c3aed", "#059669", "#10b981", "#d97706", "#dc2626"
+            "#2563eb", "#7c3aed", "#059669", "#10b981", "#d97706", "#dc2626", "#0891b2"
     };
 
     private static final int CHART_WIDTH = 460;

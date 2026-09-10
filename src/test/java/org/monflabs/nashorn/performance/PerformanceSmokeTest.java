@@ -63,4 +63,20 @@ public class PerformanceSmokeTest {
             compiled.terminate();
         }
     }
+
+    @Test
+    public void v8JavetReportsUnavailableRatherThanFailing() throws Exception {
+        ScriptExecutor v8 = BenchmarkRunner.createEngine(ENGINE.V8_JAVET);
+        if (!v8.isSupported()) {
+            // Expected on a platform the pom's OS-activated profiles don't cover - no native V8
+            // binding on the classpath, which is the "N/A" path, not a test failure.
+            return;
+        }
+        v8.init("1 + 1;", "smoke.js");
+        try {
+            v8.run();
+        } finally {
+            v8.terminate();
+        }
+    }
 }

@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -43,6 +44,7 @@ import java.util.stream.Stream;
 import org.monflabs.nashorn.performance.BenchmarkCollector.Status;
 import org.monflabs.nashorn.performance.ScriptExecutor.ENGINE;
 import org.monflabs.nashorn.performance.graaljs.GraalJSExecutor;
+import org.monflabs.nashorn.performance.javet.JavetExecutor;
 import org.monflabs.nashorn.performance.nashorn.MonflabsNashornExecutor;
 import org.monflabs.nashorn.performance.nashorn.OpenjdkNashornExecutor;
 import org.monflabs.nashorn.performance.rhino.RhinoExecutor;
@@ -108,6 +110,7 @@ public class BenchmarkRunner {
             case RHINO_COMPILED -> new RhinoExecutor(true);
             case GRAALJS_INTERPRETED -> new GraalJSExecutor(false);
             case GRAALJS_COMPILED -> new GraalJSExecutor(true);
+            case V8_JAVET -> new JavetExecutor();
         };
     }
 
@@ -174,6 +177,18 @@ public class BenchmarkRunner {
         return dot >= 0 ? name.substring(0, dot) : name;
     }
 
+    /**
+     * ubench's loop-empty.js, loop-empty-resolve.js and loop-sum.js are three independent
+     * micro-benchmarks that happen to share a "loop-" prefix - unlike octane's genuine
+     * multi-part companions (typescript.js/typescript-compiler.js/typescript-input.js,
+     * zlib.js/zlib-data.js), where the prefix match below is exactly what is needed. Without
+     * this exclusion, loop-empty-resolve.js gets merged into loop-empty.js's run (matching
+     * "loop-empty" + "-resolve"), and once that merge is suppressed, loop-empty.js and
+     * loop-sum.js would instead merge with each other (both reduce to prefix "loop" in the
+     * second pass below) - so all three names are excluded from both passes.
+     */
+    private static final Set<String> NEVER_GROUPED = Set.of("loop-empty", "loop-empty-resolve", "loop-sum");
+
     /** Groups a multi-part benchmark (e.g. {@code gbemu-part1.js}/{@code gbemu-part2.js}) under
      *  its first file, so the parts are concatenated and run as a single benchmark. */
     static Map<Path, List<Path>> groupMultiPartFiles(List<Path> files) {
@@ -188,6 +203,7 @@ public class BenchmarkRunner {
             for (Path other : files) {
                 if (other.equals(file) || consumed.contains(other)) continue;
                 String otherName = getBaseName(other);
+                if (NEVER_GROUPED.contains(otherName)) continue;
                 if (otherName.startsWith(name + "-")) {
                     companions.add(other);
                 }
@@ -209,7 +225,7 @@ public class BenchmarkRunner {
             if (consumed.contains(file)) continue;
             String name = getBaseName(file);
             int dash = name.lastIndexOf('-');
-            if (dash > 0) {
+            if (dash > 0 && !NEVER_GROUPED.contains(name)) {
                 String prefix = name.substring(0, dash);
                 List<Path> peers = new ArrayList<>();
                 peers.add(file);
@@ -217,6 +233,7 @@ public class BenchmarkRunner {
                     Path other = remaining.get(j);
                     if (consumed.contains(other)) continue;
                     String otherName = getBaseName(other);
+                    if (NEVER_GROUPED.contains(otherName)) continue;
                     int otherDash = otherName.lastIndexOf('-');
                     if (otherDash > 0 && otherName.substring(0, otherDash).equals(prefix)) {
                         peers.add(other);

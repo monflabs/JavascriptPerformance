@@ -75,6 +75,7 @@ Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
     <nashorn.openjdk.version>15.7</nashorn.openjdk.version>
     <rhino.version>1.8.0</rhino.version>
     <graalvm.version>25.0.1</graalvm.version>
+    <javet.version>6.0.0</javet.version>
     <testng.version>7.10.2</testng.version>
 
     <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
@@ -130,6 +131,13 @@ Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
       <groupId>org.graalvm.truffle</groupId>
       <artifactId>truffle-api</artifactId>
       <version>${graalvm.version}</version>
+    </dependency>
+    <dependency>
+      <!-- The core Javet API; the native V8 binding for this JVM's (OS, arch) comes from the
+           javet-v8-* dependency an OS-activated profile below contributes. -->
+      <groupId>com.caoccao.javet</groupId>
+      <artifactId>javet</artifactId>
+      <version>${javet.version}</version>
     </dependency>
     <dependency>
       <groupId>org.testng</groupId>
@@ -246,6 +254,80 @@ Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
       <properties>
         <performance.skipTests>false</performance.skipTests>
       </properties>
+    </profile>
+
+    <!--
+      Javet ships one native V8 binding per (OS, CPU architecture) as a separate artifact
+      rather than as classifiers of one jar, so there is no single dependency that resolves
+      everywhere. Each profile below activates on the (os, arch) it names and contributes the
+      matching javet-v8-* artifact; on an unmatched platform none activate, the native binding
+      is simply absent, and JavetExecutor.isSupported() reports it unavailable (like GraalJS
+      "compiled" mode on a JVM with no Graal compiler) rather than the build failing.
+    -->
+    <profile>
+      <id>javet-v8-macos-aarch64</id>
+      <activation>
+        <os><family>mac</family><arch>aarch64</arch></os>
+      </activation>
+      <dependencies>
+        <dependency>
+          <groupId>com.caoccao.javet</groupId>
+          <artifactId>javet-v8-macos-arm64</artifactId>
+          <version>${javet.version}</version>
+        </dependency>
+      </dependencies>
+    </profile>
+    <profile>
+      <id>javet-v8-macos-x86_64</id>
+      <activation>
+        <os><family>mac</family><arch>x86_64</arch></os>
+      </activation>
+      <dependencies>
+        <dependency>
+          <groupId>com.caoccao.javet</groupId>
+          <artifactId>javet-v8-macos-x86_64</artifactId>
+          <version>${javet.version}</version>
+        </dependency>
+      </dependencies>
+    </profile>
+    <profile>
+      <id>javet-v8-linux-amd64</id>
+      <activation>
+        <os><name>Linux</name><arch>amd64</arch></os>
+      </activation>
+      <dependencies>
+        <dependency>
+          <groupId>com.caoccao.javet</groupId>
+          <artifactId>javet-v8-linux-x86_64</artifactId>
+          <version>${javet.version}</version>
+        </dependency>
+      </dependencies>
+    </profile>
+    <profile>
+      <id>javet-v8-linux-aarch64</id>
+      <activation>
+        <os><name>Linux</name><arch>aarch64</arch></os>
+      </activation>
+      <dependencies>
+        <dependency>
+          <groupId>com.caoccao.javet</groupId>
+          <artifactId>javet-v8-linux-arm64</artifactId>
+          <version>${javet.version}</version>
+        </dependency>
+      </dependencies>
+    </profile>
+    <profile>
+      <id>javet-v8-windows-amd64</id>
+      <activation>
+        <os><family>windows</family><arch>amd64</arch></os>
+      </activation>
+      <dependencies>
+        <dependency>
+          <groupId>com.caoccao.javet</groupId>
+          <artifactId>javet-v8-windows-x86_64</artifactId>
+          <version>${javet.version}</version>
+        </dependency>
+      </dependencies>
     </profile>
   </profiles>
 </project>
