@@ -80,17 +80,18 @@ After the `package` build above has produced the shaded jar:
 java -jar target/javascript-performance-1.0.0-SNAPSHOT-all.jar
 ```
 
-This runs all four suites across all seven engine modes with the default
+This runs all four suites across the default `--engines=COMPILED` engine set with the default
 `--warmup=2 --iterations=5`, prints a console table, and writes
 `target/performance-report.csv` and `target/performance-report.html`. A full run
-(particularly Octane) can take a while.
+(particularly Octane) can take a while. Pass `--engines=ALL` to include the three
+interpreted-only engines too.
 
 Narrow it down with:
 
 ```bash
 java -jar target/javascript-performance-1.0.0-SNAPSHOT-all.jar \
   --suites=ubench,sunspider \
-  --engines=NASHORN_MONFLABS,NASHORN_OPENJDK,RHINO_INTERPRETED,RHINO_COMPILED,GRAALJS_INTERPRETED,GRAALJS_COMPILED,V8_JAVET,GALTAJS_INTERPRETED,GALTAJS_COMPILED \
+  --engines=ALL \
   --warmup=1 --iterations=2 \
   --report=/tmp/report.csv
 ```
@@ -98,12 +99,20 @@ java -jar target/javascript-performance-1.0.0-SNAPSHOT-all.jar \
 | Option | Default | Notes |
 | --- | --- | --- |
 | `--suites=` | `octane,sunspider,ubench,v8-benchmarks` | comma-separated |
-| `--engines=` | all seven `ScriptExecutor.ENGINE` values | comma-separated |
+| `--engines=` | `COMPILED` | comma-separated; each token is an individual `ScriptExecutor.ENGINE` name or one of the pseudo-groups below, matched case-insensitively (and freely mixable, e.g. `--engines=NASHORN,V8_JAVET`) |
 | `--octane-benchmarks=` | an 11-file subset | comma-separated; `code-load`, `typescript*`, `zlib*` excluded by default |
 | `--warmup=N` | `2` | untimed iterations before the timed run |
 | `--iterations=N` | `5` | timed iterations, wall/cpu time summed (see Methodology) |
 | `--report=<path>` | `target/performance-report.csv` | CSV output path |
 | `--html-report=<path>` | `target/performance-report.html` | self-contained HTML report path (see below) |
+
+`--engines=` pseudo-groups (`Performance.ENGINE_GROUPS`):
+
+| Group | Expands to |
+| --- | --- |
+| `COMPILED` (the default) | `NASHORN_MONFLABS, NASHORN_OPENJDK, GALTAJS_COMPILED, RHINO_COMPILED, GRAALJS_COMPILED, V8_JAVET` |
+| `ALL` | every engine — `COMPILED`'s six, then the three interpreted-only engines `RHINO_INTERPRETED, GRAALJS_INTERPRETED, GALTAJS_INTERPRETED` |
+| `NASHORN` | `NASHORN_MONFLABS, NASHORN_OPENJDK` |
 
 On a plain JDK with no GraalVM compiler (e.g. a stock Zulu/Temurin build), expect
 `GRAALJS_COMPILED` to report `N/A` — that's `ScriptExecutor.isSupported()` correctly

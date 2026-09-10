@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,7 +39,13 @@ import org.monflabs.nashorn.performance.ScriptExecutor.ENGINE;
  *
  * <pre>
  *   --suites=octane,sunspider,ubench,v8-benchmarks   (default: all four)
- *   --engines=NASHORN_MONFLABS,NASHORN_OPENJDK,...    (default: every ScriptExecutor.ENGINE)
+ *   --engines=NASHORN_MONFLABS,NASHORN_OPENJDK,...    (default: COMPILED)
+ *                                                      also accepts, in place of or mixed with
+ *                                                      individual ENGINE names: COMPILED (both
+ *                                                      Nashorns, GaltaJS compiled, Rhino compiled,
+ *                                                      GraalJS compiled, V8), ALL (every engine,
+ *                                                      compiled group first, interpreted group
+ *                                                      next), NASHORN (both Nashorns only)
  *   --octane-benchmarks=box2d,crypto,...              (default: an 11-file subset)
  *   --warmup=N                                        (default: 2)
  *   --iterations=N                                    (default: 5)
@@ -57,6 +64,17 @@ public final class Performance {
     private static final List<String> DEFAULT_SUITES =
             List.of("octane", "sunspider", "ubench", "v8-benchmarks");
 
+    // Pseudo-values a --engines token may name instead of (or alongside) an individual
+    // ScriptExecutor.ENGINE - resolved case-insensitively in resolveEngines(). ALL is compiled
+    // engines first, then interpreted engines, rather than ENGINE.values()' declaration order.
+    private static final Map<String, ENGINE[]> ENGINE_GROUPS = Map.of(
+            "COMPILED", BenchmarkRunner.COMPILED_ENGINES,
+            "ALL", concat(BenchmarkRunner.COMPILED_ENGINES, BenchmarkRunner.INTERPRETED_ENGINES),
+            "NASHORN", BenchmarkRunner.NASHORN_ENGINES);
+
+    // The default when --engines is absent or blank.
+    private static final List<ENGINE> DEFAULT_ENGINES = List.of(BenchmarkRunner.COMPILED_ENGINES);
+
     // Mirrors core/pom.xml's own octane.benchmarks default: code-load, typescript and zlib are
     // excluded there too (typescript/typescript-compiler/typescript-input and zlib/zlib-data are
     // the largest files in the suite and add little beyond what the rest already exercises).
@@ -71,9 +89,7 @@ public final class Performance {
         Map<String, String> options = parseArgs(args);
 
         List<String> suites = splitOr(options.get("suites"), DEFAULT_SUITES);
-        List<ENGINE> engines = options.containsKey("engines")
-                ? splitOr(options.get("engines"), null).stream().map(ENGINE::valueOf).collect(Collectors.toList())
-                : Arrays.asList(BenchmarkRunner.ALL_ENGINES);
+        List<ENGINE> engines = resolveEngines(splitOr(options.get("engines"), null));
         List<String> octaneBenchmarks = splitOr(options.get("octane-benchmarks"), DEFAULT_OCTANE_BENCHMARKS);
         int warmup = Integer.parseInt(options.getOrDefault("warmup", "2"));
         int iterations = Integer.parseInt(options.getOrDefault("iterations", "5"));
@@ -113,6 +129,35 @@ public final class Performance {
         System.out.println(runner.getCollector().toConsoleTable());
         System.out.println("Report written to " + report.toAbsolutePath());
         System.out.println("HTML report written to " + htmlReport.toAbsolutePath());
+    }
+
+    /**
+     * Expands a {@code --engines} value's comma-separated tokens, each either an individual
+     * {@link ENGINE} name or one of {@link #ENGINE_GROUPS}'s pseudo-group names (matched
+     * case-insensitively), into the flat, order-preserving, possibly-repeating list of engines to
+     * run. {@code tokens == null} (option absent/blank) resolves to {@link #DEFAULT_ENGINES}.
+     */
+    private static List<ENGINE> resolveEngines(List<String> tokens) {
+        if (tokens == null) {
+            return DEFAULT_ENGINES;
+        }
+        List<ENGINE> engines = new ArrayList<>();
+        for (String token : tokens) {
+            ENGINE[] group = ENGINE_GROUPS.get(token.toUpperCase());
+            if (group != null) {
+                engines.addAll(Arrays.asList(group));
+            } else {
+                engines.add(ENGINE.valueOf(token));
+            }
+        }
+        return engines;
+    }
+
+    private static ENGINE[] concat(ENGINE[] first, ENGINE[] second) {
+        ENGINE[] result = new ENGINE[first.length + second.length];
+        System.arraycopy(first, 0, result, 0, first.length);
+        System.arraycopy(second, 0, result, first.length, second.length);
+        return result;
     }
 
     private static String baseName(Path file) {

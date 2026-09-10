@@ -64,6 +64,23 @@ public class BenchmarkRunner {
 
     public static final ENGINE[] ALL_ENGINES = ENGINE.values();
 
+    /**
+     * Every engine that produces real JVM bytecode (or a native binary, for V8) rather than
+     * walking an AST - what the CLI's {@code COMPILED} pseudo-option, and its default when
+     * {@code --engines} is unset, resolve to.
+     */
+    public static final ENGINE[] COMPILED_ENGINES = {
+            ENGINE.NASHORN_MONFLABS, ENGINE.NASHORN_OPENJDK, ENGINE.GALTAJS_COMPILED,
+            ENGINE.RHINO_COMPILED, ENGINE.GRAALJS_COMPILED, ENGINE.V8_JAVET};
+
+    /** Every interpreted-mode engine, paired after {@link #COMPILED_ENGINES} for the CLI's {@code ALL}
+     * pseudo-option. */
+    public static final ENGINE[] INTERPRETED_ENGINES = {
+            ENGINE.RHINO_INTERPRETED, ENGINE.GRAALJS_INTERPRETED, ENGINE.GALTAJS_INTERPRETED};
+
+    /** What the CLI's {@code NASHORN} pseudo-option resolves to. */
+    public static final ENGINE[] NASHORN_ENGINES = {ENGINE.NASHORN_MONFLABS, ENGINE.NASHORN_OPENJDK};
+
     private static final Map<String, FileSystem> JAR_FILESYSTEMS = new ConcurrentHashMap<>();
 
     private final BenchmarkCollector collector = new BenchmarkCollector();
