@@ -183,7 +183,7 @@ public class BenchmarkCollector {
         Result[] list = sortedResults();
         StringBuilder b = new StringBuilder();
         b.append("<!DOCTYPE html>\n<html><head><meta charset=\"UTF-8\">")
-         .append("<title>Nashorn performance report</title>\n")
+         .append("<title>JavaScript engines performance report</title>\n")
          .append("<style>\n")
          .append("body{font-family:sans-serif;margin:2em;color:#111}\n")
          .append("table{border-collapse:collapse;margin-bottom:2em}\n")
@@ -196,7 +196,7 @@ public class BenchmarkCollector {
          .append(".row-label{width:220px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n")
          .append("h2{margin-top:2em}\n")
          .append("</style></head><body>\n")
-         .append("<h1>Nashorn performance report</h1>\n");
+         .append("<h1>JavaScript engines performance report</h1>\n");
 
         appendLegend(b);
         appendTable(b, list);
