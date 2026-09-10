@@ -2,8 +2,9 @@
 
 Runs the same benchmark suites — **Octane**, **SunSpider**, **ubench**, and the **V8
 benchmarks** — against the [Monflabs Nashorn fork](https://github.com/monflabs/nashorn),
-upstream OpenJDK Nashorn, Rhino (interpreted and compiled), and GraalJS (interpreted, and
-compiled when a real GraalVM compiler is present), and reports execution time compared
+upstream OpenJDK Nashorn, Rhino (interpreted and compiled), GraalJS (interpreted, and
+compiled when a real GraalVM compiler is present), and real V8 (via the
+[Javet](https://github.com/caoccao/Javet) JNI binding), and reports execution time compared
 across engines. Only `run()` is timed; parsing/compiling a benchmark happens once, outside
 the timed loop. The project vendors its own copy of the benchmark scripts under
 `src/main/resources/benchmarks/` — nothing is fetched at build time.
@@ -22,6 +23,17 @@ mvn -pl core -am install -DskipTests
 That installs `org.monflabs.nashorn:nashorn-core` into your local `~/.m2` repository at
 whatever version `nashorn.monflabs.version` in this project's `pom.xml` names. Bump that
 property when you rebuild against a newer fork revision.
+
+## Prerequisite: none, for V8 — but check your platform is covered
+
+`V8_JAVET` needs a native V8 library, and Javet ships one per (OS, CPU architecture) as a
+separate Maven artifact rather than as classifiers of one jar. The `pom.xml` has one
+OS-activated profile per supported platform (macOS/Linux/Windows × x86_64/aarch64) that
+pulls in the matching `com.caoccao.javet:javet-v8-<os>-<arch>` artifact automatically —
+nothing to configure by hand on a covered platform. On an *uncovered* platform, no profile
+activates, there is no native binding on the classpath, and `JavetExecutor.isSupported()`
+reports it unavailable: the build still succeeds, and the benchmark run records `N/A` for
+every `V8_JAVET` row rather than failing.
 
 ## Run the smoke test
 
@@ -47,7 +59,7 @@ After the `package` build above has produced the shaded jar:
 java -jar target/javascript-performance-1.0.0-SNAPSHOT-all.jar
 ```
 
-This runs all four suites across all six engine modes with the default
+This runs all four suites across all seven engine modes with the default
 `--warmup=2 --iterations=5`, prints a console table, and writes
 `target/performance-report.csv` and `target/performance-report.html`. A full run
 (particularly Octane) can take a while.
@@ -57,7 +69,7 @@ Narrow it down with:
 ```bash
 java -jar target/javascript-performance-1.0.0-SNAPSHOT-all.jar \
   --suites=ubench,sunspider \
-  --engines=NASHORN_MONFLABS,NASHORN_OPENJDK,RHINO_INTERPRETED,RHINO_COMPILED,GRAALJS_INTERPRETED,GRAALJS_COMPILED \
+  --engines=NASHORN_MONFLABS,NASHORN_OPENJDK,RHINO_INTERPRETED,RHINO_COMPILED,GRAALJS_INTERPRETED,GRAALJS_COMPILED,V8_JAVET \
   --warmup=1 --iterations=2 \
   --report=/tmp/report.csv
 ```
@@ -65,7 +77,7 @@ java -jar target/javascript-performance-1.0.0-SNAPSHOT-all.jar \
 | Option | Default | Notes |
 | --- | --- | --- |
 | `--suites=` | `octane,sunspider,ubench,v8-benchmarks` | comma-separated |
-| `--engines=` | all six `ScriptExecutor.ENGINE` values | comma-separated |
+| `--engines=` | all seven `ScriptExecutor.ENGINE` values | comma-separated |
 | `--octane-benchmarks=` | an 11-file subset | comma-separated; `code-load`, `typescript*`, `zlib*` excluded by default |
 | `--warmup=N` | `2` | untimed iterations before the timed run |
 | `--iterations=N` | `5` | timed iterations, wall/cpu time summed (see Methodology) |
@@ -75,7 +87,15 @@ java -jar target/javascript-performance-1.0.0-SNAPSHOT-all.jar \
 On a plain JDK with no GraalVM compiler (e.g. a stock Zulu/Temurin build), expect
 `GRAALJS_COMPILED` to report `N/A` — that's `ScriptExecutor.isSupported()` correctly
 declining rather than a failure. `GRAALJS_INTERPRETED` still runs and reports real
-timings on any JDK.
+timings on any JDK. Likewise, `V8_JAVET` reports `N/A` on a platform none of the pom's
+OS-activated Javet profiles cover (see above) — same "correctly declining" path, not a
+failure.
+
+`V8_JAVET` defaults V8's global `--use-strict` flag off (`V8RuntimeOptions.V8_FLAGS`, set once
+in `JavetExecutor`'s static initializer, before the first `V8Runtime` is created) — Javet's own
+default is *on*, which would otherwise reject the sloppy-mode implicit-global assignments
+(`x = 0` on an undeclared identifier) that every other engine here accepts and that a couple of
+the vendored benchmark files rely on.
 
 ## Visual report
 

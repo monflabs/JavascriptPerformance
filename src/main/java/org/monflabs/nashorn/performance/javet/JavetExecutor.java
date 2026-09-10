@@ -49,6 +49,13 @@ public class JavetExecutor extends ScriptExecutor {
             + " var print = function() { console.log.apply(console, arguments); };"
             + "}";
 
+    // A java.util.logging.LogManager holds loggers by weak reference: without a strong
+    // reference of our own, the Logger below (with its filter) can be GC'd between benchmark
+    // files, silently replaced by a fresh, unfiltered default the next time Javet calls
+    // Logger.getLogger(V8Runtime.class.getName()) - which is exactly what let the "not
+    // recycled" warning below reappear partway through a long multi-file run.
+    private static final Logger V8_RUNTIME_LOGGER = Logger.getLogger(V8Runtime.class.getName());
+
     static {
         // Javet defaults V8RuntimeOptions.V8_FLAGS.useStrict to true, which passes V8's global
         // --use-strict command-line flag - not "the script runs in strict mode" but "there is
@@ -67,7 +74,7 @@ public class JavetExecutor extends ScriptExecutor {
         // right after the log line (removeCallbackContexts() calls clear() unconditionally), so
         // nothing actually accumulates across runs; only this one benign, unavoidable message
         // is filtered out.
-        Logger.getLogger(V8Runtime.class.getName()).setFilter(record ->
+        V8_RUNTIME_LOGGER.setFilter(record ->
                 record.getMessage() == null || !record.getMessage().contains("not recycled"));
     }
 
