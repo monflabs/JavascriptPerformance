@@ -50,7 +50,6 @@ load(base_dir + 'typescript-compiler.js');
 */
 
 var success = true;
-var lastScore;
 
 function PrintResult(name, result) {
   print(name + ': ' + result);
@@ -64,7 +63,6 @@ function PrintError(name, error) {
 
 
 function PrintScore(score) {
-  lastScore = score;
   if (success) {
     print('----');
     print('Score (version ' + BenchmarkSuite.version + '): ' + score);
@@ -72,11 +70,17 @@ function PrintScore(score) {
 }
 
 
+// PHIL: forced on (base.js's own default, per-benchmark doDeterministic flag, is mostly
+// false) - left as elapsed<1000 time-boxed calibration, RunSingleBenchmark's own wall time
+// converges to a near-constant ~1s multiple on every engine regardless of speed, so this
+// harness's wall/cpu time measurement ends up measuring the calibration window instead of the
+// engine. Deterministic mode instead runs each benchmark's own pre-tuned
+// deterministicIterations count (set per-file, e.g. deltablue.js/richards.js/splay.js), a fixed
+// amount of work whose wall time scales with actual engine speed - at the expense of no longer
+// producing this suite's own reference-relative score (see PrintScore below).
 BenchmarkSuite.config.doWarmup = undefined;
-BenchmarkSuite.config.doDeterministic = undefined;
+BenchmarkSuite.config.doDeterministic = true;
 
 BenchmarkSuite.RunSuites({ NotifyResult: PrintResult,
                            NotifyError: PrintError,
                            NotifyScore: PrintScore });
-
-lastScore;

@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -100,6 +101,7 @@ public final class Performance {
         runner.setWarmupIterations(warmup);
         runner.setRunIterations(iterations);
 
+        long startNanos = System.nanoTime();
         for (String suite : suites) {
             String folder = SUITE_RESOURCE_FOLDER.get(suite);
             if (folder == null) {
@@ -120,6 +122,8 @@ public final class Performance {
             }
         }
 
+        Duration elapsed = Duration.ofNanos(System.nanoTime() - startNanos);
+
         Files.createDirectories(report.toAbsolutePath().getParent());
         Files.writeString(report, runner.getCollector().csv(), StandardCharsets.UTF_8);
         Files.createDirectories(htmlReport.toAbsolutePath().getParent());
@@ -129,6 +133,26 @@ public final class Performance {
         System.out.println(runner.getCollector().toConsoleTable());
         System.out.println("Report written to " + report.toAbsolutePath());
         System.out.println("HTML report written to " + htmlReport.toAbsolutePath());
+        System.out.println("Execution time: " + formatDuration(elapsed));
+    }
+
+    /**
+     * Formats as "1h 5m 6s", dropping leading zero-valued units (e.g. "5m 6s" under an hour,
+     * "6s" under a minute).
+     */
+    private static String formatDuration(Duration duration) {
+        long hours = duration.toHours();
+        long minutes = duration.toMinutesPart();
+        long seconds = duration.toSecondsPart();
+        StringBuilder sb = new StringBuilder();
+        if (hours > 0) {
+            sb.append(hours).append("h ");
+        }
+        if (hours > 0 || minutes > 0) {
+            sb.append(minutes).append("m ");
+        }
+        sb.append(seconds).append("s");
+        return sb.toString();
     }
 
     /**

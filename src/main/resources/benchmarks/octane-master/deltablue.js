@@ -46,8 +46,13 @@ var DeltaBlue = new BenchmarkSuite('DeltaBlue', [66118], [
 
 /* --- O b j e c t   M o d e l --- */
 
+// PHIL: added configurable: true - this project's harness re-executes the same
+// script against the same engine context for its warmup/iterations repetitions,
+// and a non-configurable property throws TypeError on the second such
+// definition (new value, same identifier) on every engine but one that resets
+// its global context per run.
 Object.defineProperty(Object.prototype, "inheritsFrom", {
-  
+  configurable: true,
   value: function (shuper) {
     function Inheriter() { }
     Inheriter.prototype = shuper.prototype;

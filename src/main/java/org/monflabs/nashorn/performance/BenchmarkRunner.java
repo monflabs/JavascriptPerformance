@@ -207,8 +207,25 @@ public class BenchmarkRunner {
      * "loop-empty" + "-resolve"), and once that merge is suppressed, loop-empty.js and
      * loop-sum.js would instead merge with each other (both reduce to prefix "loop" in the
      * second pass below) - so all three names are excluded from both passes.
+     *
+     * Every SunSpider file is independent too - its hyphens are just category separators
+     * ("3d-cube"/"3d-morph"/"3d-raytrace", "access-fannkuch"/"access-nbody"/"access-nsieve",
+     * "crypto-aes"/"crypto-md5"/"crypto-sha1", "date-format-tofte"/"date-format-xparb",
+     * "string-base64"/"string-fasta"/"string-tagcloud"), never a multi-part split - so the
+     * whole suite is excluded from both passes rather than picking out the specific names that
+     * happen to collide today.
      */
-    private static final Set<String> NEVER_GROUPED = Set.of("loop-empty", "loop-empty-resolve", "loop-sum");
+    private static final Set<String> NEVER_GROUPED = Set.of(
+            "loop-empty", "loop-empty-resolve", "loop-sum",
+            "3d-cube", "3d-morph", "3d-raytrace",
+            "access-binary-trees", "access-fannkuch", "access-nbody", "access-nsieve",
+            "bitops-3bit-bits-in-byte", "bitops-bits-in-byte", "bitops-bitwise-and", "bitops-nsieve-bits",
+            "controlflow-recursive",
+            "crypto-aes", "crypto-md5", "crypto-sha1",
+            "date-format-tofte", "date-format-xparb",
+            "math-cordic", "math-partial-sums", "math-spectral-norm",
+            "regexp-dna",
+            "string-base64", "string-fasta", "string-tagcloud", "string-unpack-code", "string-validate-input");
 
     /** Groups a multi-part benchmark (e.g. {@code gbemu-part1.js}/{@code gbemu-part2.js}) under
      *  its first file, so the parts are concatenated and run as a single benchmark. */
@@ -287,7 +304,7 @@ public class BenchmarkRunner {
             System.out.println("START " + engine.name());
             ScriptExecutor ex = createEngine(engine);
             if (!ex.isSupported()) {
-                collector.addResult(suite, fileName, engine, Status.NOT_AVAILABLE, 0, 0, null);
+                collector.addResult(suite, fileName, engine, Status.NOT_AVAILABLE, 0, 0);
                 System.out.println("    " + engine.name() + " *** N/A (not available on this JVM) ***");
                 System.out.println("END " + engine.name());
                 continue;
@@ -296,22 +313,37 @@ public class BenchmarkRunner {
             try {
                 StringBuilder sb = new StringBuilder();
                 Path baseJs = folder.resolve("base.js");
-                if (Files.exists(baseJs)) {
+                boolean hasBaseJs = Files.exists(baseJs);
+                if (hasBaseJs) {
                     sb.append(readString(baseJs)).append('\n');
                 }
+
+                StringBuilder body = new StringBuilder();
                 for (Path companion : companionFiles) {
-                    sb.append(readString(companion)).append('\n');
+                    body.append(readString(companion)).append('\n');
                 }
-                sb.append(readString(file));
+                body.append(readString(file));
+
                 Path runJs = folder.resolve("run.js");
-                if (Files.exists(runJs)) {
-                    sb.append('\n').append(readString(runJs));
+                boolean hasRunJs = Files.exists(runJs);
+                if (!hasBaseJs && hasRunJs) {
+                    // A suite with a run.js but no base.js (e.g. SunSpider) has no shared
+                    // Octane/v8-benchmarks-v6-style framework of its own to drive repeated
+                    // execution, so the benchmark body is wrapped in a callable function instead
+                    // of running inline, letting run.js call it in its own repeat loop. Each call
+                    // gets fresh local scope, so repeating it is safe even for a benchmark that
+                    // mutates what would otherwise be shared top-level state. __benchmarkFile__
+                    // lets such a run.js look up a per-file repeat count (see
+                    // sunspider-1.0.2/run.js) - individual files vary too widely in per-run cost
+                    // for one repeat count to suit all of them.
+                    sb.append("function __benchmarkBody__() {\n").append(body).append("\n}\n");
+                    sb.append("var __benchmarkFile__ = \"").append(fileName).append("\";\n");
                 } else {
-                    // Only Octane and v8-benchmarks-v6 have a run.js that ends on a deliberate
-                    // `lastScore;` expression (see ScriptExecutor.getLastScore()). Without this,
-                    // a suite with no run.js - SunSpider, ubench - would report whatever its own
-                    // benchmark file's last statement happens to evaluate to as a spurious score.
-                    sb.append("\nundefined;");
+                    sb.append(body);
+                }
+
+                if (hasRunJs) {
+                    sb.append('\n').append(readString(runJs));
                 }
 
                 String script = sb.toString();
@@ -321,13 +353,13 @@ public class BenchmarkRunner {
                     watch.runWithException(ex::run, runIterations, warmupIterations);
                     long wallMs = watch.getTotalWallTime() / PerformanceWatch.NANOSECONDS_PER_MILLI;
                     long cpuMs = watch.getTotalCpuTime() / PerformanceWatch.NANOSECONDS_PER_MILLI;
-                    collector.addResult(suite, fileName, engine, Status.OK, wallMs, cpuMs, ex.getLastScore());
+                    collector.addResult(suite, fileName, engine, Status.OK, wallMs, cpuMs);
                     System.out.println("    " + engine.name() + ", " + wallMs + "ms");
                 } finally {
                     ex.terminate();
                 }
             } catch (Throwable t) {
-                collector.addResult(suite, fileName, engine, Status.FAILED, 0, 0, null);
+                collector.addResult(suite, fileName, engine, Status.FAILED, 0, 0);
                 System.out.println("    " + engine.name() + " *** FAILED ***, " + t);
             } finally {
                 System.out.println("END " + engine.name());

@@ -21,6 +21,7 @@
 package org.monflabs.nashorn.performance;
 
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -62,7 +63,6 @@ public class BenchmarkCollector {
         final Status[] status = new Status[ENGINES.length];
         final long[] wallTimeMs = new long[ENGINES.length];
         final long[] cpuTimeMs = new long[ENGINES.length];
-        final Double[] score = new Double[ENGINES.length];
 
         Result(String suite, String file) {
             this.suite = suite;
@@ -72,20 +72,12 @@ public class BenchmarkCollector {
 
     private final Map<String, Result> results = new LinkedHashMap<>();
 
-    /**
-     * @param score the benchmark's own internally computed score (see
-     *              {@link org.monflabs.nashorn.performance.ScriptExecutor#getLastScore()}) -
-     *              {@code null} when the suite has no such convention (SunSpider, ubench) or the
-     *              run didn't produce one.
-     */
-    public void addResult(String suite, String file, ENGINE engine, Status status, long wallTimeMs, long cpuTimeMs,
-            Double score) {
+    public void addResult(String suite, String file, ENGINE engine, Status status, long wallTimeMs, long cpuTimeMs) {
         String key = Result.makeKey(suite, file);
         Result r = results.computeIfAbsent(key, k -> new Result(suite, file));
         r.status[engine.ordinal()] = status;
         r.wallTimeMs[engine.ordinal()] = wallTimeMs;
         r.cpuTimeMs[engine.ordinal()] = cpuTimeMs;
-        r.score[engine.ordinal()] = score;
     }
 
     private Result[] sortedResults() {
@@ -95,6 +87,23 @@ public class BenchmarkCollector {
             return v != 0 ? v : r1.file.compareTo(r2.file);
         });
         return list;
+    }
+
+    /** Engines with at least one recorded result - i.e. that were actually passed to a
+     *  {@link BenchmarkRunner} run, as opposed to every {@link ENGINE} that exists. An engine
+     *  requested but unsupported on this JVM still has a {@link Status#NOT_AVAILABLE} result (so
+     *  it stays), but one never requested at all has no result for any (suite, file) and is
+     *  dropped from every report so unused columns don't clutter the output. */
+    private ENGINE[] engagedEngines() {
+        EnumSet<ENGINE> engaged = EnumSet.noneOf(ENGINE.class);
+        for (Result r : results.values()) {
+            for (ENGINE engine : ENGINES) {
+                if (r.status[engine.ordinal()] != null) {
+                    engaged.add(engine);
+                }
+            }
+        }
+        return engaged.toArray(new ENGINE[0]);
     }
 
     private static String cell(Status status, long value) {
@@ -108,39 +117,22 @@ public class BenchmarkCollector {
         };
     }
 
-    /** Octane/v8-benchmarks-v6's own significant-digit formatting (higher is better) - see
-     *  BenchmarkSuite.FormatScore in their vendored base.js. */
-    private static String formatScore(double value) {
-        return value > 100 ? Long.toString(Math.round(value)) : String.format("%.3g", value);
-    }
-
-    private static String scoreCell(Status status, Double score) {
-        if (status == null) {
-            return "";
-        }
-        return switch (status) {
-            case OK -> score == null ? "" : formatScore(score);
-            case FAILED -> "FAILED";
-            case NOT_AVAILABLE -> "N/A";
-        };
-    }
-
     public String csv() {
+        ENGINE[] engines = engagedEngines();
         StringBuilder b = new StringBuilder();
         b.append("Suite,File");
-        for (ENGINE engine : ENGINES) {
+        for (ENGINE engine : engines) {
             b.append(',').append(engine.name()).append(" WallTime(ms)");
             b.append(',').append(engine.name()).append(" CpuTime(ms)");
-            b.append(',').append(engine.name()).append(" Score");
         }
         b.append('\n');
 
         for (Result r : sortedResults()) {
             b.append(r.suite).append(',').append(r.file);
-            for (int i = 0; i < ENGINES.length; i++) {
+            for (ENGINE engine : engines) {
+                int i = engine.ordinal();
                 b.append(',').append(cell(r.status[i], r.wallTimeMs[i]));
                 b.append(',').append(cell(r.status[i], r.cpuTimeMs[i]));
-                b.append(',').append(scoreCell(r.status[i], r.score[i]));
             }
             b.append('\n');
         }
@@ -148,6 +140,7 @@ public class BenchmarkCollector {
     }
 
     public String toConsoleTable() {
+        ENGINE[] engines = engagedEngines();
         StringBuilder b = new StringBuilder();
         Result[] list = sortedResults();
 
@@ -158,14 +151,15 @@ public class BenchmarkCollector {
         int colWidth = 14;
 
         b.append(String.format("%-10s %-" + fileWidth + "s", "Suite", "File"));
-        for (ENGINE engine : ENGINES) {
+        for (ENGINE engine : engines) {
             b.append(String.format(" %" + colWidth + "s", engine.name()));
         }
         b.append('\n');
 
         for (Result r : list) {
             b.append(String.format("%-10s %-" + fileWidth + "s", r.suite, r.file));
-            for (int i = 0; i < ENGINES.length; i++) {
+            for (ENGINE engine : engines) {
+                int i = engine.ordinal();
                 b.append(String.format(" %" + colWidth + "s", cell(r.status[i], r.wallTimeMs[i])));
             }
             b.append('\n');
@@ -181,6 +175,7 @@ public class BenchmarkCollector {
      */
     public String toHtmlReport() {
         Result[] list = sortedResults();
+        ENGINE[] engines = engagedEngines();
         StringBuilder b = new StringBuilder();
         b.append("<!DOCTYPE html>\n<html><head><meta charset=\"UTF-8\">")
          .append("<title>JavaScript engines performance report</title>\n")
@@ -198,42 +193,41 @@ public class BenchmarkCollector {
          .append("</style></head><body>\n")
          .append("<h1>JavaScript engines performance report</h1>\n");
 
-        appendLegend(b);
-        appendTable(b, list);
-        appendCharts(b, list);
+        appendLegend(b, engines);
+        appendTable(b, list, engines);
+        appendCharts(b, list, engines);
 
         b.append("</body></html>\n");
         return b.toString();
     }
 
-    private void appendLegend(StringBuilder b) {
+    private void appendLegend(StringBuilder b, ENGINE[] engines) {
         b.append("<div class=\"legend\">");
-        for (ENGINE engine : ENGINES) {
+        for (ENGINE engine : engines) {
             b.append("<span><span class=\"swatch\" style=\"background:").append(ENGINE_COLORS[engine.ordinal()])
              .append("\"></span>").append(escapeHtml(engine.name())).append("</span>");
         }
         b.append("</div>\n");
     }
 
-    private void appendTable(StringBuilder b, Result[] list) {
+    private void appendTable(StringBuilder b, Result[] list, ENGINE[] engines) {
         b.append("<table>\n<tr><th>Suite</th><th>File</th>");
-        for (ENGINE engine : ENGINES) {
+        for (ENGINE engine : engines) {
             b.append("<th>").append(escapeHtml(engine.name())).append(" wall(ms)</th>");
-            b.append("<th>").append(escapeHtml(engine.name())).append(" score</th>");
         }
         b.append("</tr>\n");
         for (Result r : list) {
             b.append("<tr><td>").append(escapeHtml(r.suite)).append("</td><td>").append(escapeHtml(r.file)).append("</td>");
-            for (int i = 0; i < ENGINES.length; i++) {
+            for (ENGINE engine : engines) {
+                int i = engine.ordinal();
                 b.append("<td>").append(escapeHtml(cell(r.status[i], r.wallTimeMs[i]))).append("</td>");
-                b.append("<td>").append(escapeHtml(scoreCell(r.status[i], r.score[i]))).append("</td>");
             }
             b.append("</tr>\n");
         }
         b.append("</table>\n");
     }
 
-    private void appendCharts(StringBuilder b, Result[] list) {
+    private void appendCharts(StringBuilder b, Result[] list, ENGINE[] engines) {
         String currentSuite = null;
         for (Result r : list) {
             if (!r.suite.equals(currentSuite)) {
@@ -242,38 +236,39 @@ public class BenchmarkCollector {
             }
             b.append("<div class=\"row\"><div class=\"row-label\" title=\"").append(escapeHtml(r.file)).append("\">")
              .append(escapeHtml(r.file)).append("</div>");
-            appendChart(b, r);
+            appendChart(b, r, engines);
             b.append("</div>\n");
         }
     }
 
-    private void appendChart(StringBuilder b, Result r) {
+    private void appendChart(StringBuilder b, Result r, ENGINE[] engines) {
         long max = 0;
-        for (int i = 0; i < ENGINES.length; i++) {
-            if (r.status[i] == Status.OK) {
-                max = Math.max(max, r.wallTimeMs[i]);
+        for (ENGINE engine : engines) {
+            if (r.status[engine.ordinal()] == Status.OK) {
+                max = Math.max(max, r.wallTimeMs[engine.ordinal()]);
             }
         }
-        int n = ENGINES.length;
+        int n = engines.length;
         int barWidth = (CHART_WIDTH - (n + 1) * BAR_GAP) / n;
         int svgHeight = CHART_HEIGHT + VALUE_LABEL_HEIGHT;
 
         b.append("<svg width=\"").append(CHART_WIDTH).append("\" height=\"").append(svgHeight).append("\">\n");
         for (int i = 0; i < n; i++) {
             int x = BAR_GAP + i * (barWidth + BAR_GAP);
-            ENGINE engine = ENGINES[i];
-            String color = ENGINE_COLORS[i];
-            Status status = r.status[i];
+            ENGINE engine = engines[i];
+            String color = ENGINE_COLORS[engine.ordinal()];
+            Status status = r.status[engine.ordinal()];
+            long wallTimeMs = r.wallTimeMs[engine.ordinal()];
             b.append("<g><title>").append(escapeHtml(engine.name())).append(": ")
-             .append(escapeHtml(cell(status, r.wallTimeMs[i]))).append(status == Status.OK ? "ms" : "").append("</title>");
+             .append(escapeHtml(cell(status, wallTimeMs))).append(status == Status.OK ? "ms" : "").append("</title>");
             if (status == Status.OK && max > 0) {
-                int barHeight = (int) Math.max(2, Math.round((double) r.wallTimeMs[i] / max * CHART_HEIGHT));
+                int barHeight = (int) Math.max(2, Math.round((double) wallTimeMs / max * CHART_HEIGHT));
                 int y = VALUE_LABEL_HEIGHT + (CHART_HEIGHT - barHeight);
                 b.append("<rect x=\"").append(x).append("\" y=\"").append(y)
                  .append("\" width=\"").append(barWidth).append("\" height=\"").append(barHeight)
                  .append("\" fill=\"").append(color).append("\"/>")
                  .append("<text x=\"").append(x + barWidth / 2.0).append("\" y=\"").append(y - 3)
-                 .append("\" font-size=\"9\" text-anchor=\"middle\">").append(r.wallTimeMs[i]).append("</text>");
+                 .append("\" font-size=\"9\" text-anchor=\"middle\">").append(wallTimeMs).append("</text>");
             } else {
                 String label = status == null ? "" : (status == Status.FAILED ? "FAILED" : "N/A");
                 b.append("<text x=\"").append(x + barWidth / 2.0).append("\" y=\"").append(VALUE_LABEL_HEIGHT + CHART_HEIGHT - 4)

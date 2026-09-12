@@ -64,6 +64,6 @@ public class OpenjdkNashornExecutor extends ScriptExecutor {
 
     @Override
     public void run() throws Exception {
-        setLastScore(script.eval());
+        script.eval();
     }
 }

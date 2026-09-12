@@ -22,7 +22,6 @@ package org.monflabs.nashorn.performance.graaljs;
 
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Source;
-import org.graalvm.polyglot.Value;
 import org.monflabs.nashorn.performance.ScriptExecutor;
 
 public class GraalJSExecutor extends ScriptExecutor {
@@ -91,7 +90,6 @@ public class GraalJSExecutor extends ScriptExecutor {
 
     @Override
     public void run() throws Exception {
-        Value result = graalContext.eval(script);
-        setLastScore(result.fitsInDouble() ? result.asDouble() : null);
+        graalContext.eval(script);
     }
 }

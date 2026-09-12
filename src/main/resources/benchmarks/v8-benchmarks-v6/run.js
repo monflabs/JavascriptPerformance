@@ -37,7 +37,6 @@ load('v8-benchmarks-v6/splay.js');
 */
 
 var success = true;
-var lastScore;
 /*
 function printMeasurement(name, value) {
   print("<measurement><name>" + name +
@@ -70,7 +69,6 @@ function PrintResult(name, result) {
 function PrintError(name, error) {
 }
 function PrintScore(score) {
-  lastScore = score;
 }
 
 
@@ -85,4 +83,7 @@ for (var i = 1; i <= runs; i++) {
   ///gc();
 }
 
-lastScore;
+// PHIL: suppressed - RunSingleBenchmark's fixed-iteration-count change in
+// base.js means elapsed time no longer approximates the calibration window
+// its reference-relative score assumes, so the score is no longer meaningful.
+undefined;

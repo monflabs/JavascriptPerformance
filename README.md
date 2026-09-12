@@ -130,7 +130,7 @@ the vendored benchmark files rely on.
 ## Visual report
 
 Every run also writes a self-contained HTML report (`--html-report=<path>`, default
-`target/performance-report.html`) — a data table with the same wall-time and Score columns as
+`target/performance-report.html`) — a data table with the same wall-time columns as
 the CSV (see Methodology), followed by one bar chart per (suite, file), one bar per engine,
 comparing wall time. No external
 stylesheet, script, image, or network fetch: `BenchmarkCollector.toHtmlReport()` renders plain
@@ -151,14 +151,21 @@ For each (suite, file, engine) triple, `BenchmarkRunner.runFile` (`BenchmarkRunn
 2. Concatenates the suite's `base.js` (if any) + any multi-part companion files (e.g.
    `gbemu-part1.js`/`gbemu-part2.js`) + the benchmark file + `run.js` (if any), then calls
    `ScriptExecutor.init()` **once** to parse/compile that combined script. This happens
-   *before* any timing starts, per engine per file — compilation time is never measured.
+   *before* any timing starts, per engine per file — compilation time is never measured. For a
+   suite with a `run.js` but no `base.js` (SunSpider), the benchmark file is wrapped in a
+   callable `__benchmarkBody__()` function instead of running inline, and a `__benchmarkFile__`
+   global is set to the current filename, letting `run.js` drive repetition itself and look up
+   a per-file repeat count (see below).
 3. Runs `warmupIterations` (`--warmup`, default **2**) untimed calls to `run()` to let the
    engine JIT-warm/stabilize, discarding their timings entirely.
 4. Runs `iterations` (`--iterations`, default **5**) timed calls to `run()`, each wrapped in
    `System.nanoTime()` (wall time) and `ThreadMXBean.getCurrentThreadCpuTime()` (CPU time on
    the calling thread) — `PerformanceWatch.runWithException` (`PerformanceWatch.java`).
-5. Reports the **sum** across those `iterations` timed runs, in milliseconds — not an average
-   per run. To compare per-execution cost between two rows, divide by `--iterations`.
+5. If `iterations` is at least **3**, discards the fastest and the slowest of those runs
+   (ranked by wall time) before summing — a single run can be thrown off by a GC pause, a JIT
+   recompile, or OS scheduling noise, in either direction. Reports the **sum** of the remaining
+   runs, in milliseconds — not an average per run. To compare per-execution cost between two
+   rows, divide by `--iterations` (or `--iterations - 2` when trimming applied).
 6. Calls `ScriptExecutor.terminate()` once the timed loop finishes.
 
 A `Throwable` from any of the above is caught per (engine, file) — one engine failing a
@@ -168,34 +175,34 @@ distinct from `NOT_AVAILABLE`.
 Each engine gets its own fresh `ScriptExecutor` instance per file (a new JS realm/context),
 so no benchmark's state or warmup leaks into another file or another engine.
 
-### Wall/cpu time is not a valid cross-engine metric for Octane and v8-benchmarks-v6
+### Octane, SunSpider, and v8-benchmarks-v6 run a fixed amount of work, not a fixed window
 
-Octane and the V8 Benchmark Suite each self-calibrate their own internal timing loop to run
-for a fixed wall-clock window rather than a fixed amount of work: Octane's `RunStep`/`Measure`
-loop in `base.js` keeps calling `benchmark.run()` while `elapsed < 1000` (ms); the V8 Benchmark
-Suite's equivalent loop uses `MIN_TIME = 10000`. So `run()`'s own wall/cpu time reported by
-this harness for those two suites converges to a near-constant multiple of that window on
-every engine, fast or slow — it measures the calibration window, not engine speed, and the
-`WallTime(ms)`/`CpuTime(ms)` columns for those two suites specifically are **not** meaningful
-for comparing engines (they still are for SunSpider and ubench, which have no such loop).
+Octane's `RunStep`/`Measure` loop in `base.js`, the V8 Benchmark Suite's equivalent loop, and
+SunSpider's individual tests are all short enough on their own that a single call is too fast
+relative to timer/GC/JIT noise to measure reliably, and each of these three suites' own default
+driver handles that by self-calibrating: running `benchmark.run()` (or the whole test body)
+repeatedly until a fixed wall-clock window has elapsed, rather than a fixed amount of work
+(`elapsed < 1000` for Octane, `MIN_TIME = 10000` for v8-benchmarks-v6, `TARGET_MS` for
+SunSpider). Run through this harness, that self-calibration is actively harmful: `run()`'s own
+wall/cpu time would converge to a near-constant multiple of that window on every engine, fast
+or slow — measuring the calibration window, not engine speed.
 
-The suite's own internally computed benchmark score - a geometric mean across its component
-benchmarks, higher is better, the same number that suite would print as
-`Score (version N): <score>` - is the metric that actually reflects engine speed for these two
-suites. Both vendored `run.js` files (under `src/main/resources/benchmarks/`) end on a
-deliberate trailing `lastScore;` expression exposing that score as the script's own execution
-result, which `ScriptExecutor.getLastScore()` retrieves per run and the CSV/HTML report surface
-as a **Score** column, one per engine, alongside the existing wall/cpu time columns. A suite
-with no such convention (SunSpider, ubench) always reports a blank Score - `BenchmarkRunner`
-appends a trailing `undefined;` to their concatenated script precisely so an incidental numeric
-last-statement value in one of their benchmark files can never leak through as a spurious
-score - and their wall/cpu time remains the valid metric, as before.
+So this project overrides that behavior for all three suites, replacing the time-boxed loop
+with a fixed number of repetitions per benchmark, so wall time reflects a fixed amount of work
+instead:
+- **Octane** (`octane-master/run.js`) turns on the suite's own built-in `doDeterministic` mode,
+  which runs each benchmark's pre-tuned `deterministicIterations` count (set per-file in
+  `octane-master/*.js`, e.g. `deltablue.js`/`richards.js`/`splay.js`) instead of time-boxing.
+- **v8-benchmarks-v6** (`v8-benchmarks-v6/base.js`) replaces `RunSingleBenchmark`'s time-boxed
+  loop with a `FIXED_ITERATIONS` map keyed by benchmark name, each value picked so one measured
+  pass takes roughly 300ms on a mid-speed engine.
+- **SunSpider** (`sunspider-1.0.2/run.js`) replaces the time-boxed loop with a `REPEATS` map
+  keyed by filename (via the harness-injected `__benchmarkFile__` global — see Methodology),
+  each value picked so one measured pass takes roughly 250ms on a mid-speed engine.
 
-`GALTAJS_COMPILED` always reports a blank Score too, for a different reason: GaltaJS's
-transpiled/compiled runtime only surfaces a script's completion value through an explicit
-`return`, never from a bare top-level expression statement - so `run.js`'s trailing `lastScore;`
-is never captured in that mode. `GALTAJS_INTERPRETED` has no such limitation and reports Score
-normally; both modes' wall/cpu time are unaffected and remain valid.
+One consequence: none of the three suites' own reference-relative score is meaningful anymore,
+since it's computed from the now-bypassed time-boxed measurement — this harness never reported
+that score anyway (see `WallTime(ms)`/`CpuTime(ms)` in Methodology).
 
 ## History
 

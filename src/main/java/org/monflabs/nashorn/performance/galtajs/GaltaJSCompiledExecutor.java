@@ -121,11 +121,6 @@ public class GaltaJSCompiledExecutor extends ScriptExecutor {
         TranspiledGlobalRuntimeContext context = new TranspiledGlobalRuntimeContext(env, env.createExpressionExecutor());
         GlobalThis globalThis = context.getGlobalThis();
         globalThis.put("window", globalThis); // some Octane benchmarks assume a jQuery-style window
-        // Unlike the interpreter's executeWithContext(), a transpiled unit's runValue() only ever
-        // reflects an explicit `return` (JSTranspiledRuntimeContext.setReturnValue() is called
-        // from nowhere but ASTReturn) - a bare top-level expression statement, such as Octane/
-        // v8-benchmarks-v6 run.js's trailing `lastScore;`, is never captured. So Score is always
-        // null for this engine/mode; wall/cpu time remain valid.
-        setLastScore(script.runValue(context));
+        script.runValue(context);
     }
 }

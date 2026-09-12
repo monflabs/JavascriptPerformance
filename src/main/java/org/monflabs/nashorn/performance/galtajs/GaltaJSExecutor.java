@@ -66,6 +66,6 @@ public class GaltaJSExecutor extends ScriptExecutor {
         InterpretedGlobalRuntimeContext context = new InterpretedGlobalRuntimeContext(env, env.createProgramExecutor());
         GlobalThis globalThis = context.getGlobalThis();
         globalThis.put("window", globalThis); // some Octane benchmarks assume a jQuery-style window
-        setLastScore(script.executeWithContext(context));
+        script.executeWithContext(context);
     }
 }

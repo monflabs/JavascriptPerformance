@@ -195,36 +195,47 @@ BenchmarkSuite.prototype.NotifyError = function(error) {
   }
 }
 
-var MIN_TIME = 10000;
+// PHIL: replaced the original time-boxed calibration (run each benchmark until
+// a fixed MIN_TIME=10000ms wall-clock window elapsed) with a fixed iteration
+// count per benchmark, so the measured wall-clock time reflects a fixed
+// amount of work instead of a fixed measurement window. Each count below was
+// picked so that one measured pass takes roughly 300ms on a mid-speed engine,
+// which keeps a single run.js execution - and this project's own
+// warmup/iterations repetitions of it - fast, at the expense of no longer
+// producing this suite's own reference-relative score (see run.js).
+var DEFAULT_ITERATIONS = 2000;
+var FIXED_ITERATIONS = {
+  "Richards": 4500,
+  "DeltaBlue": 6500,
+  "Splay": 1000,
+  "Encrypt": 3750,
+  "Decrypt": 200,
+  "Earley": 2350,
+  "Boyer": 125,
+  "RayTrace": 410,
+  "RegExp": 52
+};
 
-// Runs a single benchmark for at least MIN_TIME milliseconds and computes the
+// Runs a single benchmark for a fixed number of iterations and computes the
 // average time it takes to run a single iteration.
 BenchmarkSuite.prototype.RunSingleBenchmark = function(benchmark, data) {
-  function Measure(data) {
-    var elapsed = 0;
+  var iterations = FIXED_ITERATIONS[benchmark.name] || DEFAULT_ITERATIONS;
+
+  function Measure() {
     var start = new Date();
-    for (var n = 0; elapsed < MIN_TIME; n++) {
+    for (var n = 0; n < iterations; n++) {
       benchmark.run();
-      elapsed = new Date() - start;
     }
-    if (data != null) {
-      data.runs += n;
-      data.elapsed += elapsed;
-    }
+    return new Date() - start;
   }
 
   if (data == null) {
-    // Measure the benchmark once for warm up and throw the result
-    // away. Return a fresh data object.
-    Measure(null);
+    // Run once for warm up and throw the result away.
+    Measure();
     return { runs: 0, elapsed: 0 };
   } else {
-    Measure(data);
-    // If we've run too few iterations, we continue for another second.
-	// PHIL: original value below is 32
-    if (data.runs < 32) return data;
-    var usec = (data.elapsed * MIN_TIME) / data.runs;
-    this.NotifyStep(new BenchmarkResult(benchmark, usec));
+    var elapsed = Measure();
+    this.NotifyStep(new BenchmarkResult(benchmark, (elapsed * 1000) / iterations));
     return null;
   }
 }

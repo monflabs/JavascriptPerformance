@@ -66,44 +66,4 @@ public abstract class ScriptExecutor implements RunnableWithException {
 
     @Override
     public abstract void run() throws Exception;
-
-    private Double lastScore;
-
-    /**
-     * Numeric value of the concatenated script's last evaluated expression, from the most
-     * recent {@link #run()} call. Octane and the V8 Benchmark Suite both self-calibrate to run
-     * for a fixed wall-clock window (Octane's {@code elapsed < 1000} in {@code base.js}, the V8
-     * Benchmark Suite's {@code MIN_TIME = 10000}) rather than a fixed amount of work, so their
-     * own internally computed Score - exposed as a trailing {@code lastScore;} expression in
-     * their {@code run.js} - is the only meaningful cross-engine metric for those two suites;
-     * {@link #run()}'s wall/cpu time there reflects the calibration window, not engine speed.
-     * Their own {@code BenchmarkSuite.FormatScore} hands {@code lastScore} an already-formatted
-     * JS string ({@code value.toFixed(0)}/{@code toPrecision(3)}), not a number, hence the
-     * string-parsing fallback below. {@code null} when the script's result is neither a finite
-     * number nor such a string - true of every SunSpider/ubench file, which have no such
-     * convention (see {@code BenchmarkRunner}, which appends a trailing {@code undefined;} to
-     * every suite with no {@code run.js} so their own incidental last-statement value never
-     * leaks through as a spurious score).
-     */
-    public Double getLastScore() {
-        return lastScore;
-    }
-
-    /** Subclasses call this from {@link #run()} with the engine's script-execution result. */
-    protected void setLastScore(Object result) {
-        if (result instanceof Number n && Double.isFinite(n.doubleValue())) {
-            lastScore = n.doubleValue();
-            return;
-        }
-        if (result instanceof String s) {
-            try {
-                double d = Double.parseDouble(s.trim());
-                lastScore = Double.isFinite(d) ? d : null;
-                return;
-            } catch (NumberFormatException e) {
-                // fall through to null
-            }
-        }
-        lastScore = null;
-    }
 }

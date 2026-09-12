@@ -64,17 +64,38 @@ public final class PerformanceWatch {
             task.run();
         }
 
-        totalWallTime = 0;
-        totalCpuTime = 0;
+        long[] wallTimes = new long[iterations];
+        long[] cpuTimes = new long[iterations];
         for (int i = 0; i < iterations; i++) {
             long wallStart = System.nanoTime();
             long cpuStart = THREAD_MX_BEAN.getCurrentThreadCpuTime();
             task.run();
-            totalWallTime += System.nanoTime() - wallStart;
+            wallTimes[i] = System.nanoTime() - wallStart;
             long cpuNow = THREAD_MX_BEAN.getCurrentThreadCpuTime();
-            if (cpuStart >= 0 && cpuNow >= 0) {
-                totalCpuTime += cpuNow - cpuStart;
+            cpuTimes[i] = (cpuStart >= 0 && cpuNow >= 0) ? cpuNow - cpuStart : 0;
+        }
+
+        // A single iteration can be thrown off by a GC pause, a JIT recompile kicking in
+        // mid-run, or OS scheduling noise - in either direction. With enough iterations to
+        // still have a meaningful sample left afterwards, drop the fastest and the slowest
+        // (ranked by wall time) before summing, rather than let one outlier skew the result.
+        int excludeMin = -1;
+        int excludeMax = -1;
+        if (iterations >= 3) {
+            excludeMin = 0;
+            excludeMax = 0;
+            for (int i = 1; i < iterations; i++) {
+                if (wallTimes[i] < wallTimes[excludeMin]) excludeMin = i;
+                if (wallTimes[i] > wallTimes[excludeMax]) excludeMax = i;
             }
+        }
+
+        totalWallTime = 0;
+        totalCpuTime = 0;
+        for (int i = 0; i < iterations; i++) {
+            if (i == excludeMin || i == excludeMax) continue;
+            totalWallTime += wallTimes[i];
+            totalCpuTime += cpuTimes[i];
         }
     }
 }
