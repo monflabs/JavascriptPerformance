@@ -3,10 +3,8 @@
 Runs the same benchmark suites — **Octane**, **SunSpider**, **ubench**, and the **V8
 benchmarks** — against the [Monflabs Nashorn fork](https://github.com/monflabs/nashorn),
 upstream OpenJDK Nashorn, Rhino (interpreted and compiled), GraalJS (interpreted, and
-compiled when a real GraalVM compiler is present), real V8 (via the
-[Javet](https://github.com/caoccao/Javet) JNI binding), and Monflabs
-[GaltaJS](https://github.com/monflabs/galta) (interpreted, and compiled - GaltaJS transpiles the
-script to Java source and compiles/loads it as a real class), and reports execution time
+compiled when a real GraalVM compiler is present), and real V8 (via the
+[Javet](https://github.com/caoccao/Javet) JNI binding), and reports execution time
 compared across engines. Only `run()` is timed; parsing/compiling a benchmark happens once,
 outside the timed loop. The project vendors its own copy of the benchmark scripts under
 `src/main/resources/benchmarks/` — nothing is fetched at build time.
@@ -25,25 +23,6 @@ mvn -pl core -am install -DskipTests
 That installs `org.monflabs.nashorn:nashorn-core` into your local `~/.m2` repository at
 whatever version `nashorn.monflabs.version` in this project's `pom.xml` names. Bump that
 property when you rebuild against a newer fork revision.
-
-## Prerequisite: a built GaltaJS (`org.monflabs.galta:js` + `:filesystem`)
-
-Neither is published to Maven Central, not even as a SNAPSHOT. Build and `mvn install` a peer
-checkout of the [Galta-Java](https://github.com/monflabs/galta) reactor first:
-
-```bash
-cd ../Galta-Java/galta   # peer checkout, next to this project
-mvn install -DskipTests
-```
-
-That installs every `org.monflabs.galta:*` artifact this project needs
-(`js`, `filesystem`, and their own transitive `json`/`javacompiler`/`utilities`) into your local
-`~/.m2` repository at whatever version `galtajs.version` in this project's `pom.xml` names.
-
-`GALTAJS_COMPILED` transpiles the benchmark to Java source and compiles/loads it as a real class
-(all in-memory - an NIO `MemoryFileSystem`, nothing touches disk); `GALTAJS_INTERPRETED` walks
-the AST directly. Both need no native library and are always available once the peer checkout is
-installed.
 
 ## Prerequisite: none, for V8 — but check your platform is covered
 
@@ -114,8 +93,8 @@ java -jar target/javascript-performance-1.0.0-SNAPSHOT-all.jar \
 
 | Group | Expands to |
 | --- | --- |
-| `COMPILED` (the default) | `NASHORN_MONFLABS, NASHORN_OPENJDK, GALTAJS_COMPILED, RHINO_COMPILED, GRAALJS_COMPILED, V8_JAVET` |
-| `ALL` | every engine — `COMPILED`'s six, then the three interpreted-only engines `RHINO_INTERPRETED, GRAALJS_INTERPRETED, GALTAJS_INTERPRETED` |
+| `COMPILED` (the default) | `NASHORN_MONFLABS, NASHORN_OPENJDK, RHINO_COMPILED, GRAALJS_COMPILED, V8_JAVET` |
+| `ALL` | every engine — `COMPILED`'s five, then the two interpreted-only engines `RHINO_INTERPRETED, GRAALJS_INTERPRETED` |
 | `NASHORN` | `NASHORN_MONFLABS, NASHORN_OPENJDK` |
 
 On a plain JDK with no GraalVM compiler (e.g. a stock Zulu/Temurin build), expect
@@ -261,3 +240,8 @@ that score anyway (see `WallTime(ms)`/`CpuTime(ms)` in Methodology).
 
 Extracted from the `performance` module of [monflabs/nashorn](https://github.com/monflabs/nashorn)
 into its own project, since it compares several engines and isn't specific to that fork.
+
+Support for Monflabs **GaltaJS** (interpreted, and compiled - it transpiles the script to Java
+source and compiles/loads it as a real class) lives on the **`galtajs` branch**, and is kept off
+`main` because that engine is not public yet. The branch is otherwise identical; merge `main` into
+it to carry harness changes across.

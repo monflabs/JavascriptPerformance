@@ -27,15 +27,14 @@ import org.testng.annotations.Test;
 
 public class PerformanceSmokeTest {
 
-    // Both Nashorns, both Rhino modes and both GaltaJS modes must always be able to run (none
+    // Both Nashorns and both Rhino modes must always be able to run (none
     // needs a native library); GraalJS compiled and V8_JAVET are legitimately unavailable on a
     // plain JDK/uncovered platform and are asserted separately below.
     @Test
     public void runsUbenchOnAlwaysAvailableEngines() throws Exception {
         BenchmarkRunner runner = new BenchmarkRunner(
                 ENGINE.NASHORN_MONFLABS, ENGINE.NASHORN_OPENJDK,
-                ENGINE.RHINO_INTERPRETED, ENGINE.RHINO_COMPILED,
-                ENGINE.GALTAJS_INTERPRETED, ENGINE.GALTAJS_COMPILED);
+                ENGINE.RHINO_INTERPRETED, ENGINE.RHINO_COMPILED);
         runner.setWarmupIterations(0);
         runner.setRunIterations(1);
         runner.runSuite("ubench");

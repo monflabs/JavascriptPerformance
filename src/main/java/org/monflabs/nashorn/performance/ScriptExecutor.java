@@ -36,9 +36,7 @@ public abstract class ScriptExecutor implements RunnableWithException {
         RHINO_COMPILED,
         GRAALJS_INTERPRETED,
         GRAALJS_COMPILED,
-        V8_JAVET,
-        GALTAJS_INTERPRETED,
-        GALTAJS_COMPILED
+        V8_JAVET
     }
 
     public abstract ENGINE getEngine();

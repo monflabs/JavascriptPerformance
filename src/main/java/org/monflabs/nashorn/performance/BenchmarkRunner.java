@@ -43,8 +43,6 @@ import java.util.stream.Stream;
 
 import org.monflabs.nashorn.performance.BenchmarkCollector.Status;
 import org.monflabs.nashorn.performance.ScriptExecutor.ENGINE;
-import org.monflabs.nashorn.performance.galtajs.GaltaJSCompiledExecutor;
-import org.monflabs.nashorn.performance.galtajs.GaltaJSExecutor;
 import org.monflabs.nashorn.performance.graaljs.GraalJSExecutor;
 import org.monflabs.nashorn.performance.javet.JavetExecutor;
 import org.monflabs.nashorn.performance.nashorn.MonflabsNashornExecutor;
@@ -70,13 +68,13 @@ public class BenchmarkRunner {
      * {@code --engines} is unset, resolve to.
      */
     public static final ENGINE[] COMPILED_ENGINES = {
-            ENGINE.NASHORN_MONFLABS, ENGINE.NASHORN_OPENJDK, ENGINE.GALTAJS_COMPILED,
-            ENGINE.RHINO_COMPILED, ENGINE.GRAALJS_COMPILED, ENGINE.V8_JAVET};
+            ENGINE.NASHORN_MONFLABS, ENGINE.NASHORN_OPENJDK, ENGINE.RHINO_COMPILED,
+            ENGINE.GRAALJS_COMPILED, ENGINE.V8_JAVET};
 
     /** Every interpreted-mode engine, paired after {@link #COMPILED_ENGINES} for the CLI's {@code ALL}
      * pseudo-option. */
     public static final ENGINE[] INTERPRETED_ENGINES = {
-            ENGINE.RHINO_INTERPRETED, ENGINE.GRAALJS_INTERPRETED, ENGINE.GALTAJS_INTERPRETED};
+            ENGINE.RHINO_INTERPRETED, ENGINE.GRAALJS_INTERPRETED};
 
     /** What the CLI's {@code NASHORN} pseudo-option resolves to. */
     public static final ENGINE[] NASHORN_ENGINES = {ENGINE.NASHORN_MONFLABS, ENGINE.NASHORN_OPENJDK};
@@ -167,8 +165,6 @@ public class BenchmarkRunner {
             case GRAALJS_INTERPRETED -> new GraalJSExecutor(false);
             case GRAALJS_COMPILED -> new GraalJSExecutor(true);
             case V8_JAVET -> new JavetExecutor();
-            case GALTAJS_INTERPRETED -> new GaltaJSExecutor();
-            case GALTAJS_COMPILED -> new GaltaJSCompiledExecutor();
         };
     }
 

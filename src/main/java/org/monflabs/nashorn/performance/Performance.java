@@ -43,8 +43,8 @@ import org.monflabs.nashorn.performance.ScriptExecutor.ENGINE;
  *   --engines=NASHORN_MONFLABS,NASHORN_OPENJDK,...    (default: COMPILED)
  *                                                      also accepts, in place of or mixed with
  *                                                      individual ENGINE names: COMPILED (both
- *                                                      Nashorns, GaltaJS compiled, Rhino compiled,
- *                                                      GraalJS compiled, V8), ALL (every engine,
+ *                                                      Nashorns, Rhino compiled, GraalJS compiled,
+ *                                                      V8), ALL (every engine,
  *                                                      compiled group first, interpreted group
  *                                                      next), NASHORN (both Nashorns only)
  *   --octane-benchmarks=box2d,crypto,...              (default: an 11-file subset)
