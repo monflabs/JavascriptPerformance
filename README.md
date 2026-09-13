@@ -245,3 +245,11 @@ Support for Monflabs **GaltaJS** (interpreted, and compiled - it transpiles the 
 source and compiles/loads it as a real class) lives on the **`galtajs` branch**, and is kept off
 `main` because that engine is not public yet. The branch is otherwise identical; merge `main` into
 it to carry harness changes across.
+
+## License
+
+This project is licensed under the [Apache License, Version 2.0](LICENSE).
+
+The benchmark suites vendored under `src/main/resources/benchmarks/` (SunSpider, the V8
+benchmarks, Octane, ubench) are third-party code and remain under their own original
+licenses, as stated in those files.
