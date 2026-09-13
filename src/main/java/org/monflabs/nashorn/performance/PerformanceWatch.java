@@ -42,6 +42,8 @@ public final class PerformanceWatch {
     private final String name;
     private long totalWallTime;
     private long totalCpuTime;
+    private long minWallTime;
+    private long minCpuTime;
 
     public PerformanceWatch(String name) {
         this.name = name;
@@ -57,6 +59,29 @@ public final class PerformanceWatch {
 
     public long getTotalCpuTime() {
         return totalCpuTime;
+    }
+
+    /**
+     * The fastest iteration's wall time, and the CPU time of that same iteration.
+     *
+     * Inside one JVM every disturbance - a GC pause, a JIT recompile landing
+     * mid-run, the OS scheduling something else - costs time, so the fastest
+     * sample is the truest measure of what the engine can do. It is the statistic
+     * {@link IsolatedRunner} records from each forked JVM, where the noise it
+     * discards would otherwise be attributed to whichever engine ran while the
+     * machine happened to be busy.
+     *
+     * @return the minimum wall time of the timed iterations, in nanoseconds
+     */
+    public long getMinWallTime() {
+        return minWallTime;
+    }
+
+    /**
+     * @return the CPU time of the iteration {@link #getMinWallTime()} reports
+     */
+    public long getMinCpuTime() {
+        return minCpuTime;
     }
 
     public void runWithException(RunnableWithException task, int iterations, int warmupIterations) throws Exception {
@@ -97,5 +122,17 @@ public final class PerformanceWatch {
             totalWallTime += wallTimes[i];
             totalCpuTime += cpuTimes[i];
         }
+
+        // The fastest iteration is what isolated mode reports (see getMinWallTime). The
+        // trimming above already found it, when it ran at all.
+        int fastest = excludeMin;
+        if (fastest < 0) {
+            fastest = 0;
+            for (int i = 1; i < iterations; i++) {
+                if (wallTimes[i] < wallTimes[fastest]) fastest = i;
+            }
+        }
+        minWallTime = iterations > 0 ? wallTimes[fastest] : 0;
+        minCpuTime = iterations > 0 ? cpuTimes[fastest] : 0;
     }
 }

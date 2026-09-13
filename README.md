@@ -82,8 +82,10 @@ java -jar target/javascript-performance-1.0.0-SNAPSHOT-all.jar
 
 This runs all four suites across the default `--engines=COMPILED` engine set with the default
 `--warmup=2 --iterations=5`, prints a console table, and writes
-`target/performance-report.csv` and `target/performance-report.html`. A full run
-(particularly Octane) can take a while. Pass `--engines=ALL` to include the three
+`target/performance-report.csv` and `target/performance-report.html`. Each engine runs in its
+own JVM and the whole set is repeated over `--rounds` interleaved rounds (see *Isolation*
+below), so a full run (particularly Octane) can take a while — count on
+`rounds × engines` JVMs. Pass `--engines=ALL` to include the three
 interpreted-only engines too.
 
 Narrow it down with:
@@ -105,6 +107,8 @@ java -jar target/javascript-performance-1.0.0-SNAPSHOT-all.jar \
 | `--iterations=N` | `5` | timed iterations, wall/cpu time summed (see Methodology) |
 | `--report=<path>` | `target/performance-report.csv` | CSV output path |
 | `--html-report=<path>` | `target/performance-report.html` | self-contained HTML report path (see below) |
+| `--isolate=true\|false` | `true` | one JVM per engine, rounds interleaved (see Methodology) |
+| `--rounds=N` | `3` | JVMs per engine; must be odd |
 
 `--engines=` pseudo-groups (`Performance.ENGINE_GROUPS`):
 
@@ -161,11 +165,14 @@ For each (suite, file, engine) triple, `BenchmarkRunner.runFile` (`BenchmarkRunn
 4. Runs `iterations` (`--iterations`, default **5**) timed calls to `run()`, each wrapped in
    `System.nanoTime()` (wall time) and `ThreadMXBean.getCurrentThreadCpuTime()` (CPU time on
    the calling thread) — `PerformanceWatch.runWithException` (`PerformanceWatch.java`).
-5. If `iterations` is at least **3**, discards the fastest and the slowest of those runs
-   (ranked by wall time) before summing — a single run can be thrown off by a GC pause, a JIT
-   recompile, or OS scheduling noise, in either direction. Reports the **sum** of the remaining
-   runs, in milliseconds — not an average per run. To compare per-execution cost between two
-   rows, divide by `--iterations` (or `--iterations - 2` when trimming applied).
+5. Reduces those iterations to one number, in milliseconds. Which one depends on the mode:
+   under `--isolate` (the default) it is the **fastest** iteration, which the parent then takes
+   a median of across rounds — see *Isolation* below. Under `--isolate=false` it is the **sum**
+   of the iterations with the fastest and the slowest discarded (when `iterations` is at least
+   **3**), since a single run can be thrown off by a GC pause, a JIT recompile or OS scheduling
+   noise in either direction. A summed figure is not an average per run: to compare
+   per-execution cost between two rows, divide by `--iterations` (or `--iterations - 2` when
+   trimming applied).
 6. Calls `ScriptExecutor.terminate()` once the timed loop finishes.
 
 A `Throwable` from any of the above is caught per (engine, file) — one engine failing a
@@ -174,6 +181,52 @@ distinct from `NOT_AVAILABLE`.
 
 Each engine gets its own fresh `ScriptExecutor` instance per file (a new JS realm/context),
 so no benchmark's state or warmup leaks into another file or another engine.
+
+### Isolation: one JVM per engine, rounds interleaved
+
+By default (`--isolate`, `IsolatedRunner.java`) the process you launch measures nothing itself.
+It forks one child JVM per engine, repeats the whole set over `--rounds` rounds, and reports the
+median of the rounds. A round runs every engine once, in the order `--engines` named them, so
+the timeline is `A B A B A B` rather than `A A A B B B`. Each child is
+`Performance --child-engine=<ENGINE>`: it runs the same suites with that one engine and prints
+each measurement as a `##RESULT` line on stdout, which the parent picks out and takes the median
+of; every other line the child prints is echoed as progress.
+
+This is the same shape as the engine's own `buildtools/perf-gate.sh`, and each part of it is
+there because measuring without it produced a wrong answer:
+
+- **One engine per JVM.** Two engines in one process share a heap, a code cache and a set of
+  profiles, and whichever runs second inherits the first's state. Measured the single-JVM way,
+  an arithmetic micro-benchmark read **+11%** where separate JVMs showed **+1.6%**.
+- **Interleaved rounds.** All of engine A and then all of engine B lets a machine that warms up,
+  throttles, or picks up unrelated load bias one side wholesale. Measured one side then the
+  other, the first side came out slower on *all seven* of perf-gate's metrics, by up to **17%**.
+  Alternating spreads any such drift evenly over both.
+- **Minimum within a JVM, median across JVMs.** Inside one process every disturbance costs time,
+  so the fastest iteration is the truest. Across processes a sample can be spuriously *fast* —
+  the first JVM after a build runs on a boosted CPU — and a minimum would enshrine that outlier,
+  where a median discards it. This is why the two modes reduce their iterations differently
+  (step 5 above), and why `--rounds` must be **odd**: with an even count the median would be the
+  average of the two middle rounds rather than a measurement that actually happened.
+- **A pinned heap.** Every child gets `-Xms1g -Xmx1g -XX:+UseG1GC`. Left to ergonomics, G1 sizes
+  itself differently from process to process, and the allocation-heavy benchmarks moved **15%**
+  on that alone. The parent's own JVM arguments are forwarded to each child, minus any
+  `-Xms`/`-Xmx`/collector flag that would fight the pin.
+
+A benchmark that was `FAILED` or `N/A` in *any* round is reported that way rather than as a
+median over the rounds that did work, so a flaky engine cannot hide behind a number. A child
+that dies outside a benchmark is reported on its own line and the run continues; its missing
+rows stay blank rather than becoming good-looking numbers.
+
+`--isolate=false` reverts to the original behaviour: a single JVM, every engine in it, one pass,
+no forking. It is faster and fine for a smoke test, but its cross-engine numbers carry the
+order bias above — don't compare engines with it.
+
+**Short benchmarks need more iterations, not more rounds.** Below roughly 5ms per iteration the
+timer and scheduler noise dominates and no amount of median-taking recovers it: one
+micro-benchmark read **+558%** at 8 in-JVM iterations and **+6.3%** at 25. Raise `--iterations`
+for those, and check nothing else is loading the machine before trusting a run at all — a Time
+Machine backup once turned every metric into a 2x "regression".
 
 ### Octane, SunSpider, and v8-benchmarks-v6 run a fixed amount of work, not a fixed window
 

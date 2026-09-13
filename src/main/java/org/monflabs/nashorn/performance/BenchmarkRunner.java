@@ -83,11 +83,23 @@ public class BenchmarkRunner {
 
     private static final Map<String, FileSystem> JAR_FILESYSTEMS = new ConcurrentHashMap<>();
 
+    /**
+     * Where a measurement goes. The default adds it to this runner's
+     * {@link BenchmarkCollector}; a forked child ({@link IsolatedRunner}) prints it
+     * for its parent to read instead.
+     */
+    @FunctionalInterface
+    public interface ResultSink {
+        void accept(String suite, String file, ENGINE engine, Status status, long wallMs, long cpuMs);
+    }
+
     private final BenchmarkCollector collector = new BenchmarkCollector();
     private final ENGINE[] engines;
 
     private int warmupIterations = DEFAULT_WARMUP;
     private int runIterations = DEFAULT_ITERATIONS;
+    private ResultSink sink;
+    private boolean recordMinimum;
 
     public BenchmarkRunner() {
         this(ALL_ENGINES);
@@ -119,6 +131,31 @@ public class BenchmarkRunner {
 
     public void setRunIterations(int runIterations) {
         this.runIterations = runIterations;
+    }
+
+    /** Sends every measurement here instead of to this runner's collector. */
+    public void setResultSink(ResultSink sink) {
+        this.sink = sink;
+    }
+
+    /**
+     * Records the fastest timed iteration rather than the trimmed total.
+     *
+     * The total is what the single-JVM mode reports, and comparable only with
+     * itself. Isolated mode wants one number per (file, engine, JVM) that the
+     * parent can take a median of, and the minimum is the one least polluted by
+     * whatever else the machine was doing - see {@link PerformanceWatch#getMinWallTime()}.
+     */
+    public void setRecordMinimum(boolean recordMinimum) {
+        this.recordMinimum = recordMinimum;
+    }
+
+    private void record(String suite, String file, ENGINE engine, Status status, long wallMs, long cpuMs) {
+        if (sink != null) {
+            sink.accept(suite, file, engine, status, wallMs, cpuMs);
+        } else {
+            collector.addResult(suite, file, engine, status, wallMs, cpuMs);
+        }
     }
 
     public static ScriptExecutor createEngine(ENGINE engine) {
@@ -304,7 +341,7 @@ public class BenchmarkRunner {
             System.out.println("START " + engine.name());
             ScriptExecutor ex = createEngine(engine);
             if (!ex.isSupported()) {
-                collector.addResult(suite, fileName, engine, Status.NOT_AVAILABLE, 0, 0);
+                record(suite, fileName, engine, Status.NOT_AVAILABLE, 0, 0);
                 System.out.println("    " + engine.name() + " *** N/A (not available on this JVM) ***");
                 System.out.println("END " + engine.name());
                 continue;
@@ -351,15 +388,17 @@ public class BenchmarkRunner {
                 try {
                     PerformanceWatch watch = new PerformanceWatch(fileName);
                     watch.runWithException(ex::run, runIterations, warmupIterations);
-                    long wallMs = watch.getTotalWallTime() / PerformanceWatch.NANOSECONDS_PER_MILLI;
-                    long cpuMs = watch.getTotalCpuTime() / PerformanceWatch.NANOSECONDS_PER_MILLI;
-                    collector.addResult(suite, fileName, engine, Status.OK, wallMs, cpuMs);
+                    long wallNanos = recordMinimum ? watch.getMinWallTime() : watch.getTotalWallTime();
+                    long cpuNanos = recordMinimum ? watch.getMinCpuTime() : watch.getTotalCpuTime();
+                    long wallMs = wallNanos / PerformanceWatch.NANOSECONDS_PER_MILLI;
+                    long cpuMs = cpuNanos / PerformanceWatch.NANOSECONDS_PER_MILLI;
+                    record(suite, fileName, engine, Status.OK, wallMs, cpuMs);
                     System.out.println("    " + engine.name() + ", " + wallMs + "ms");
                 } finally {
                     ex.terminate();
                 }
             } catch (Throwable t) {
-                collector.addResult(suite, fileName, engine, Status.FAILED, 0, 0);
+                record(suite, fileName, engine, Status.FAILED, 0, 0);
                 System.out.println("    " + engine.name() + " *** FAILED ***, " + t);
             } finally {
                 System.out.println("END " + engine.name());
