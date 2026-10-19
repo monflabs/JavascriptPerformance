@@ -129,5 +129,6 @@ public class JavetExecutor extends ScriptExecutor {
     @Override
     public void run() throws Exception {
         script.execute(false);
+        v8Runtime.await();
     }
 }

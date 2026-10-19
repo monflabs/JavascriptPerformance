@@ -2,7 +2,8 @@
 
 Runs the same benchmark suites — **Octane**, **SunSpider**, **ubench**, and the **V8
 benchmarks** — against the [Monflabs Nashorn fork](https://github.com/monflabs/nashorn),
-upstream OpenJDK Nashorn, Rhino (interpreted and compiled), GraalJS (interpreted, and
+upstream OpenJDK Nashorn, Rhino (interpreted and compiled), Monflabs GaltaJS (interpreted,
+and compiled by transpiling to Java), GraalJS (interpreted, and
 compiled when a real GraalVM compiler is present), and real V8 (via the
 [Javet](https://github.com/caoccao/Javet) JNI binding), and reports execution time
 compared across engines. Only `run()` is timed; parsing/compiling a benchmark happens once,
@@ -23,6 +24,20 @@ mvn -pl core -am install -DskipTests
 That installs `org.monflabs.nashorn:nashorn-core` into your local `~/.m2` repository at
 whatever version `nashorn.monflabs.version` in this project's `pom.xml` names. Bump that
 property when you rebuild against a newer fork revision.
+
+## Prerequisite: a built `js` (Monflabs GaltaJS)
+
+`org.monflabs.galta:js` is not published to Maven Central either. Build and install it from a
+peer checkout of Galta-Java before building this project:
+
+```bash
+cd ../Galta-Java   # peer checkout, next to this project
+mvn clean install -DskipTests
+```
+
+It lands in `~/.m2` at the version `galta.version` in this project's `pom.xml` names.
+`GALTAJS_COMPILED` transpiles the script to Java and compiles it in memory with javac (in
+`parse`, outside the timed region), so it needs a JDK, not just a JRE.
 
 ## Prerequisite: none, for V8 — but check your platform is covered
 
@@ -79,7 +94,7 @@ java -jar target/javascript-performance-1.0.0-SNAPSHOT-all.jar \
 
 | Option | Default | Notes |
 | --- | --- | --- |
-| `--suites=` | `octane,sunspider,ubench,v8-benchmarks` | comma-separated |
+| `--suites=` | `octane,sunspider,ubench,v8-benchmarks` | comma-separated; `intrinsics` is opt-in (see below) |
 | `--engines=` | `COMPILED` | comma-separated; each token is an individual `ScriptExecutor.ENGINE` name or one of the pseudo-groups below, matched case-insensitively (and freely mixable, e.g. `--engines=NASHORN,V8_JAVET`) |
 | `--octane-benchmarks=` | an 11-file subset | comma-separated; `code-load`, `typescript*`, `zlib*` excluded by default |
 | `--warmup=N` | `2` | untimed iterations before the timed run |
@@ -93,8 +108,8 @@ java -jar target/javascript-performance-1.0.0-SNAPSHOT-all.jar \
 
 | Group | Expands to |
 | --- | --- |
-| `COMPILED` (the default) | `NASHORN_MONFLABS, NASHORN_OPENJDK, RHINO_COMPILED, GRAALJS_COMPILED, V8_JAVET` |
-| `ALL` | every engine — `COMPILED`'s five, then the two interpreted-only engines `RHINO_INTERPRETED, GRAALJS_INTERPRETED` |
+| `COMPILED` (the default) | `NASHORN_MONFLABS, NASHORN_OPENJDK, RHINO_COMPILED, GRAALJS_COMPILED, V8_JAVET, GALTAJS_COMPILED` |
+| `ALL` | every engine — `COMPILED`'s six, then the three interpreted-only engines `RHINO_INTERPRETED, GRAALJS_INTERPRETED, GALTAJS_INTERPRETED` |
 | `NASHORN` | `NASHORN_MONFLABS, NASHORN_OPENJDK` |
 
 On a plain JDK with no GraalVM compiler (e.g. a stock Zulu/Temurin build), expect
@@ -109,6 +124,19 @@ in `JavetExecutor`'s static initializer, before the first `V8Runtime` is created
 default is *on*, which would otherwise reject the sloppy-mode implicit-global assignments
 (`x = 0` on an undeclared identifier) that every other engine here accepts and that a couple of
 the vendored benchmark files rely on.
+
+### A run that fits in an hour
+
+The defaults (3 isolated rounds, 2 warmups, 5 iterations, all engines) take many hours, mostly
+because of the interpreted engines. This takes about 40 minutes on the compiled engines:
+
+```bash
+java -jar target/javascript-performance-1.0.0-SNAPSHOT-all.jar \
+  --suites=octane,sunspider,ubench,intrinsics --engines=COMPILED \
+  --rounds=1 --warmup=1 --iterations=1
+```
+
+It leaves out `v8-benchmarks` (its programs duplicate the Octane ones, ~10 minutes alone).
 
 ## Visual report
 
@@ -235,6 +263,23 @@ instead:
 One consequence: none of the three suites' own reference-relative score is meaningful anymore,
 since it's computed from the now-bypassed time-boxed measurement — this harness never reported
 that score anyway (see `WallTime(ms)`/`CpuTime(ms)` in Methodology).
+
+### The `intrinsics` suite: generators and asynchronous processing
+
+`--suites=intrinsics` (opt-in, not in the default set) benchmarks engine features through small
+realistic programs rather than empty micro-loops: a tree iterator, a lazy pipeline, N-Queens, a
+custom iterable collection and a tokenizer built on generators (`generator_*.js`), plus a request
+handler, `Promise` combinators and an async-generator stream (`async_*.js`).
+
+Each file defines `__benchmarkBody__()` returning `{expected, result}`. Synchronous results are
+compared immediately; for a promise result the check is deferred to the start of the next run, so
+the suite needs at least 2 iterations, and a run whose job queue was not drained fails. A mismatch
+shows up as FAILED for that engine, which is also what happens when an engine lacks a feature
+(e.g. OpenJDK Nashorn has no generators or `Promise`; Rhino has no `class` or `async`).
+
+To measure asynchronous work, the executors drain the job queue inside the timed region: Rhino
+`processMicrotasks()`, Javet `await()`, and the Monflabs Nashorn engine is created with
+`--event-loop` (this applies to every suite).
 
 ## History
 

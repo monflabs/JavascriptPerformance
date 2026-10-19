@@ -69,5 +69,6 @@ public class RhinoExecutor extends ScriptExecutor {
     @Override
     public void run() throws Exception {
         script.exec(context, scope);
+        context.processMicrotasks();
     }
 }
