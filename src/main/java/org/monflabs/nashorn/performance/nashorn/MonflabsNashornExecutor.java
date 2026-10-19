@@ -41,7 +41,7 @@ public class MonflabsNashornExecutor extends ScriptExecutor {
     @Override
     public void initEngine() throws Exception {
         NashornScriptEngineFactory factory = new NashornScriptEngineFactory();
-        engine = factory.getScriptEngine("--optimistic-types=true");
+        engine = factory.getScriptEngine("--optimistic-types=true", "--event-loop");
         String consolePolyfill = "var console = { log: function() {"
                 + " print(Array.prototype.join.call(arguments, ' '));"
                 + " } };";

@@ -79,7 +79,7 @@ java -jar target/javascript-performance-1.0.0-SNAPSHOT-all.jar \
 
 | Option | Default | Notes |
 | --- | --- | --- |
-| `--suites=` | `octane,sunspider,ubench,v8-benchmarks` | comma-separated |
+| `--suites=` | `octane,sunspider,ubench,v8-benchmarks` | comma-separated; `intrinsics` is opt-in (see below) |
 | `--engines=` | `COMPILED` | comma-separated; each token is an individual `ScriptExecutor.ENGINE` name or one of the pseudo-groups below, matched case-insensitively (and freely mixable, e.g. `--engines=NASHORN,V8_JAVET`) |
 | `--octane-benchmarks=` | an 11-file subset | comma-separated; `code-load`, `typescript*`, `zlib*` excluded by default |
 | `--warmup=N` | `2` | untimed iterations before the timed run |
@@ -109,6 +109,19 @@ in `JavetExecutor`'s static initializer, before the first `V8Runtime` is created
 default is *on*, which would otherwise reject the sloppy-mode implicit-global assignments
 (`x = 0` on an undeclared identifier) that every other engine here accepts and that a couple of
 the vendored benchmark files rely on.
+
+### A run that fits in an hour
+
+The defaults (3 isolated rounds, 2 warmups, 5 iterations, all engines) take many hours, mostly
+because of the interpreted engines. This takes about 40 minutes on the compiled engines:
+
+```bash
+java -jar target/javascript-performance-1.0.0-SNAPSHOT-all.jar \
+  --suites=octane,sunspider,ubench,intrinsics --engines=COMPILED \
+  --rounds=1 --warmup=1 --iterations=1
+```
+
+It leaves out `v8-benchmarks` (its programs duplicate the Octane ones, ~10 minutes alone).
 
 ## Visual report
 
@@ -235,6 +248,23 @@ instead:
 One consequence: none of the three suites' own reference-relative score is meaningful anymore,
 since it's computed from the now-bypassed time-boxed measurement — this harness never reported
 that score anyway (see `WallTime(ms)`/`CpuTime(ms)` in Methodology).
+
+### The `intrinsics` suite: generators and asynchronous processing
+
+`--suites=intrinsics` (opt-in, not in the default set) benchmarks engine features through small
+realistic programs rather than empty micro-loops: a tree iterator, a lazy pipeline, N-Queens, a
+custom iterable collection and a tokenizer built on generators (`generator_*.js`), plus a request
+handler, `Promise` combinators and an async-generator stream (`async_*.js`).
+
+Each file defines `__benchmarkBody__()` returning `{expected, result}`. Synchronous results are
+compared immediately; for a promise result the check is deferred to the start of the next run, so
+the suite needs at least 2 iterations, and a run whose job queue was not drained fails. A mismatch
+shows up as FAILED for that engine, which is also what happens when an engine lacks a feature
+(e.g. OpenJDK Nashorn has no generators or `Promise`; Rhino has no `class` or `async`).
+
+To measure asynchronous work, the executors drain the job queue inside the timed region: Rhino
+`processMicrotasks()`, Javet `await()`, and the Monflabs Nashorn engine is created with
+`--event-loop` (this applies to every suite).
 
 ## History
 
