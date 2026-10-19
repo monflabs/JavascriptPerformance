@@ -2,7 +2,8 @@
 
 Runs the same benchmark suites — **Octane**, **SunSpider**, **ubench**, and the **V8
 benchmarks** — against the [Monflabs Nashorn fork](https://github.com/monflabs/nashorn),
-upstream OpenJDK Nashorn, Rhino (interpreted and compiled), GraalJS (interpreted, and
+upstream OpenJDK Nashorn, Rhino (interpreted and compiled), Monflabs GaltaJS (interpreted,
+and compiled by transpiling to Java), GraalJS (interpreted, and
 compiled when a real GraalVM compiler is present), and real V8 (via the
 [Javet](https://github.com/caoccao/Javet) JNI binding), and reports execution time
 compared across engines. Only `run()` is timed; parsing/compiling a benchmark happens once,
@@ -23,6 +24,12 @@ mvn -pl core -am install -DskipTests
 That installs `org.monflabs.nashorn:nashorn-core` into your local `~/.m2` repository at
 whatever version `nashorn.monflabs.version` in this project's `pom.xml` names. Bump that
 property when you rebuild against a newer fork revision.
+
+## GaltaJS
+
+[`org.monflabs.galta:js`](https://central.sonatype.com/artifact/org.monflabs.galta/js) is on
+Maven Central; nothing to install. `GALTAJS_COMPILED` transpiles the script to Java and compiles
+it in memory with javac (in `parse`, outside the timed region), so it needs a JDK, not just a JRE.
 
 ## Prerequisite: none, for V8 — but check your platform is covered
 
@@ -93,8 +100,8 @@ java -jar target/javascript-performance-1.0.0-SNAPSHOT-all.jar \
 
 | Group | Expands to |
 | --- | --- |
-| `COMPILED` (the default) | `NASHORN_MONFLABS, NASHORN_OPENJDK, RHINO_COMPILED, GRAALJS_COMPILED, V8_JAVET` |
-| `ALL` | every engine — `COMPILED`'s five, then the two interpreted-only engines `RHINO_INTERPRETED, GRAALJS_INTERPRETED` |
+| `COMPILED` (the default) | `NASHORN_MONFLABS, NASHORN_OPENJDK, RHINO_COMPILED, GRAALJS_COMPILED, V8_JAVET, GALTAJS_COMPILED` |
+| `ALL` | every engine — `COMPILED`'s six, then the three interpreted-only engines `RHINO_INTERPRETED, GRAALJS_INTERPRETED, GALTAJS_INTERPRETED` |
 | `NASHORN` | `NASHORN_MONFLABS, NASHORN_OPENJDK` |
 
 On a plain JDK with no GraalVM compiler (e.g. a stock Zulu/Temurin build), expect
@@ -271,10 +278,8 @@ To measure asynchronous work, the executors drain the job queue inside the timed
 Extracted from the `performance` module of [monflabs/nashorn](https://github.com/monflabs/nashorn)
 into its own project, since it compares several engines and isn't specific to that fork.
 
-Support for Monflabs **GaltaJS** (interpreted, and compiled - it transpiles the script to Java
-source and compiles/loads it as a real class) lives on the **`galtajs` branch**, and is kept off
-`main` because that engine is not public yet. The branch is otherwise identical; merge `main` into
-it to carry harness changes across.
+GaltaJS support was briefly kept on a separate `galtajs` branch while the engine was not public.
+It is on Maven Central now and lives on `main`; that branch is obsolete.
 
 ## License
 
