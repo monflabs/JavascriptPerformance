@@ -37,6 +37,7 @@ load('v8-benchmarks-v6/splay.js');
 */
 
 var success = true;
+var firstError;
 /*
 function printMeasurement(name, value) {
   print("<measurement><name>" + name +
@@ -67,6 +68,8 @@ function printMeasurement(name, value) {
 function PrintResult(name, result) {
 }
 function PrintError(name, error) {
+  if (success) firstError = name + ': ' + error;
+  success = false;
 }
 function PrintScore(score) {
 }
@@ -81,6 +84,13 @@ for (var i = 1; i <= runs; i++) {
                              NotifyError: PrintError,
                              NotifyScore: PrintScore });
   ///gc();
+}
+
+// PHIL: a benchmark whose own result check fails (mandreel's checksum, say) is reported through
+// NotifyError and the suite carries on, so the harness would time wrong work as if it were right.
+// Throw instead, so the harness records the benchmark as FAILED.
+if (!success) {
+  throw new Error(firstError);
 }
 
 // PHIL: suppressed - RunSingleBenchmark's fixed-iteration-count change in

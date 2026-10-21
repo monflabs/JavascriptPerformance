@@ -50,6 +50,7 @@ load(base_dir + 'typescript-compiler.js');
 */
 
 var success = true;
+var firstError;
 
 function PrintResult(name, result) {
   print(name + ': ' + result);
@@ -58,6 +59,7 @@ function PrintResult(name, result) {
 
 function PrintError(name, error) {
   PrintResult(name, error);
+  if (success) firstError = name + ': ' + error;
   success = false;
 }
 
@@ -84,3 +86,10 @@ BenchmarkSuite.config.doDeterministic = true;
 BenchmarkSuite.RunSuites({ NotifyResult: PrintResult,
                            NotifyError: PrintError,
                            NotifyScore: PrintScore });
+
+// PHIL: a benchmark whose own result check fails (mandreel's checksum, say) is reported through
+// NotifyError and the suite carries on, so the harness would time wrong work as if it were right.
+// Throw instead, so the harness records the benchmark as FAILED.
+if (!success) {
+  throw new Error(firstError);
+}

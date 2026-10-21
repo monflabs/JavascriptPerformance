@@ -176,7 +176,9 @@ For each (suite, file, engine) triple, `BenchmarkRunner.runFile` (`BenchmarkRunn
 
 A `Throwable` from any of the above is caught per (engine, file) — one engine failing a
 benchmark doesn't abort the run or affect any other engine/file — and recorded as `FAILED`,
-distinct from `NOT_AVAILABLE`.
+distinct from `NOT_AVAILABLE`. A benchmark that fails its own result check counts too: Octane and the V8 benchmarks
+report such an error (mandreel's checksum, say) and carry on, so their `run.js` throws it at the
+end instead, rather than letting wrong work be timed as if it were right.
 
 Each engine gets its own fresh `ScriptExecutor` instance per file (a new JS realm/context),
 so no benchmark's state or warmup leaks into another file or another engine.

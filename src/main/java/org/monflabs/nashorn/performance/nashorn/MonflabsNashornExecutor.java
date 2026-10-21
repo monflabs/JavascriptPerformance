@@ -19,7 +19,8 @@ import javax.script.Compilable;
 import javax.script.CompiledScript;
 import javax.script.ScriptEngine;
 
-import org.monflabs.nashorn.api.scripting.NashornScriptEngineFactory;
+import org.monflabs.nashorn.api.scripting.NashornScriptEngineBuilder;
+import org.monflabs.nashorn.libs.NashornLibrary;
 import org.monflabs.nashorn.performance.ScriptExecutor;
 
 public class MonflabsNashornExecutor extends ScriptExecutor {
@@ -40,8 +41,12 @@ public class MonflabsNashornExecutor extends ScriptExecutor {
 
     @Override
     public void initEngine() throws Exception {
-        NashornScriptEngineFactory factory = new NashornScriptEngineFactory();
-        engine = factory.getScriptEngine("--optimistic-types=true", "--event-loop");
+        // Since 2026.0.0 a bare engine is exactly ECMAScript: print comes from NashornLibrary
+        engine = new NashornScriptEngineBuilder()
+                .optimisticTypes(true)
+                .eventLoop(true)
+                .library(new NashornLibrary())
+                .build();
         String consolePolyfill = "var console = { log: function() {"
                 + " print(Array.prototype.join.call(arguments, ' '));"
                 + " } };";
