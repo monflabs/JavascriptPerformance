@@ -72,7 +72,8 @@ public final class Performance {
     private static final Map<String, ENGINE[]> ENGINE_GROUPS = Map.of(
             "COMPILED", BenchmarkRunner.COMPILED_ENGINES,
             "ALL", concat(BenchmarkRunner.COMPILED_ENGINES, BenchmarkRunner.INTERPRETED_ENGINES),
-            "NASHORN", BenchmarkRunner.NASHORN_ENGINES);
+            "NASHORN", BenchmarkRunner.NASHORN_ENGINES,
+            "RHINO", BenchmarkRunner.RHINO_ENGINES);
 
     // The default when --engines is absent or blank.
     private static final List<ENGINE> DEFAULT_ENGINES = List.of(BenchmarkRunner.COMPILED_ENGINES);

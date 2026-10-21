@@ -70,6 +70,9 @@ limitations under the License.
     <nashorn.monflabs.version>2026.0.0</nashorn.monflabs.version>
     <nashorn.openjdk.version>15.7</nashorn.openjdk.version>
     <rhino.version>1.8.0</rhino.version>
+    <!-- Peer checkout of https://github.com/monflabs/rhino: publish its rhino and rhino-tools
+         modules to ~/.m2 first (see README) - this fork is not on Maven Central. -->
+    <rhino.monflabs.version>2.0.0-SNAPSHOT</rhino.monflabs.version>
     <graalvm.version>25.0.1</graalvm.version>
     <javet.version>6.0.0</javet.version>
     <galta.version>0.8.0</galta.version>
@@ -106,6 +109,16 @@ limitations under the License.
       <groupId>org.mozilla</groupId>
       <artifactId>rhino-tools</artifactId>
       <version>${rhino.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.monflabs.mozilla</groupId>
+      <artifactId>rhino</artifactId>
+      <version>${rhino.monflabs.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.monflabs.mozilla</groupId>
+      <artifactId>rhino-tools</artifactId>
+      <version>${rhino.monflabs.version}</version>
     </dependency>
     <dependency>
       <groupId>org.graalvm.sdk</groupId>

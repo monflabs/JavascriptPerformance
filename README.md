@@ -2,7 +2,8 @@
 
 Runs the same benchmark suites — **Octane**, **SunSpider**, **ubench**, and the **V8
 benchmarks** — against the [Monflabs Nashorn fork](https://github.com/monflabs/nashorn),
-upstream OpenJDK Nashorn, Rhino (interpreted and compiled), Monflabs GaltaJS (interpreted,
+upstream OpenJDK Nashorn, the [Monflabs Rhino fork](https://github.com/monflabs/rhino) and upstream
+Rhino (each interpreted and compiled), Monflabs GaltaJS (interpreted,
 and compiled by transpiling to Java), GraalJS (interpreted, and
 compiled when a real GraalVM compiler is present), and real V8 (via the
 [Javet](https://github.com/caoccao/Javet) JNI binding), and reports execution time
@@ -24,6 +25,21 @@ mvn -pl core -am install -DskipTests
 That installs `org.monflabs.nashorn:nashorn-core` into your local `~/.m2` repository at
 whatever version `nashorn.monflabs.version` in this project's `pom.xml` names. Bump that
 property when you rebuild against a newer fork revision.
+
+## Prerequisite: a built Monflabs Rhino
+
+`org.monflabs.mozilla:rhino` and `rhino-tools` are not published either. Publish them to your
+local `~/.m2` from a peer checkout of [monflabs/rhino](https://github.com/monflabs/rhino):
+
+```bash
+cd ../rhino   # peer checkout, next to this project
+./gradlew :rhino:publishToMavenLocal :rhino-tools:publishToMavenLocal -x test
+```
+
+The version is `rhino.monflabs.version` in this project's `pom.xml` (a `-SNAPSHOT`, so republishing
+and rebuilding this project picks up the new engine). The fork lives in the
+`org.monflabs.mozilla` packages, so it sits next to upstream Rhino on one classpath. It runs in its
+`VERSION_ECMASCRIPT` language version; upstream Rhino runs in `VERSION_ES6`.
 
 ## GaltaJS
 
@@ -100,9 +116,10 @@ java -jar target/javascript-performance-1.0.0-SNAPSHOT-all.jar \
 
 | Group | Expands to |
 | --- | --- |
-| `COMPILED` (the default) | `NASHORN_MONFLABS, NASHORN_OPENJDK, RHINO_COMPILED, GRAALJS_COMPILED, V8_JAVET, GALTAJS_COMPILED` |
-| `ALL` | every engine — `COMPILED`'s six, then the three interpreted-only engines `RHINO_INTERPRETED, GRAALJS_INTERPRETED, GALTAJS_INTERPRETED` |
+| `COMPILED` (the default) | `NASHORN_MONFLABS, NASHORN_OPENJDK, RHINO_MONFLABS_COMPILED, RHINO_COMPILED, GRAALJS_COMPILED, V8_JAVET, GALTAJS_COMPILED` |
+| `ALL` | every engine — `COMPILED`'s seven, then the four interpreted-only engines `RHINO_MONFLABS_INTERPRETED, RHINO_INTERPRETED, GRAALJS_INTERPRETED, GALTAJS_INTERPRETED` |
 | `NASHORN` | `NASHORN_MONFLABS, NASHORN_OPENJDK` |
+| `RHINO` | `RHINO_MONFLABS_COMPILED, RHINO_COMPILED` |
 
 On a plain JDK with no GraalVM compiler (e.g. a stock Zulu/Temurin build), expect
 `GRAALJS_COMPILED` to report `N/A` — that's `ScriptExecutor.isSupported()` correctly

@@ -29,6 +29,8 @@ public abstract class ScriptExecutor implements RunnableWithException {
         NASHORN_OPENJDK,
         RHINO_INTERPRETED,
         RHINO_COMPILED,
+        RHINO_MONFLABS_INTERPRETED,
+        RHINO_MONFLABS_COMPILED,
         GRAALJS_INTERPRETED,
         GRAALJS_COMPILED,
         V8_JAVET,

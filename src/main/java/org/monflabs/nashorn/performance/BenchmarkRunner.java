@@ -43,6 +43,7 @@ import org.monflabs.nashorn.performance.graaljs.GraalJSExecutor;
 import org.monflabs.nashorn.performance.javet.JavetExecutor;
 import org.monflabs.nashorn.performance.nashorn.MonflabsNashornExecutor;
 import org.monflabs.nashorn.performance.nashorn.OpenjdkNashornExecutor;
+import org.monflabs.nashorn.performance.rhino.MonflabsRhinoExecutor;
 import org.monflabs.nashorn.performance.rhino.RhinoExecutor;
 
 /**
@@ -64,16 +65,20 @@ public class BenchmarkRunner {
      * {@code --engines} is unset, resolve to.
      */
     public static final ENGINE[] COMPILED_ENGINES = {
-            ENGINE.NASHORN_MONFLABS, ENGINE.NASHORN_OPENJDK, ENGINE.RHINO_COMPILED,
-            ENGINE.GRAALJS_COMPILED, ENGINE.V8_JAVET, ENGINE.GALTAJS_COMPILED};
+            ENGINE.NASHORN_MONFLABS, ENGINE.NASHORN_OPENJDK, ENGINE.RHINO_MONFLABS_COMPILED,
+            ENGINE.RHINO_COMPILED, ENGINE.GRAALJS_COMPILED, ENGINE.V8_JAVET, ENGINE.GALTAJS_COMPILED};
 
     /** Every interpreted-mode engine, paired after {@link #COMPILED_ENGINES} for the CLI's {@code ALL}
      * pseudo-option. */
     public static final ENGINE[] INTERPRETED_ENGINES = {
-            ENGINE.RHINO_INTERPRETED, ENGINE.GRAALJS_INTERPRETED, ENGINE.GALTAJS_INTERPRETED};
+            ENGINE.RHINO_MONFLABS_INTERPRETED, ENGINE.RHINO_INTERPRETED, ENGINE.GRAALJS_INTERPRETED,
+            ENGINE.GALTAJS_INTERPRETED};
 
     /** What the CLI's {@code NASHORN} pseudo-option resolves to. */
     public static final ENGINE[] NASHORN_ENGINES = {ENGINE.NASHORN_MONFLABS, ENGINE.NASHORN_OPENJDK};
+
+    /** What the CLI's {@code RHINO} pseudo-option resolves to: the Monflabs fork and upstream, compiled. */
+    public static final ENGINE[] RHINO_ENGINES = {ENGINE.RHINO_MONFLABS_COMPILED, ENGINE.RHINO_COMPILED};
 
     private static final Map<String, FileSystem> JAR_FILESYSTEMS = new ConcurrentHashMap<>();
 
@@ -158,6 +163,8 @@ public class BenchmarkRunner {
             case NASHORN_OPENJDK -> new OpenjdkNashornExecutor();
             case RHINO_INTERPRETED -> new RhinoExecutor(false);
             case RHINO_COMPILED -> new RhinoExecutor(true);
+            case RHINO_MONFLABS_INTERPRETED -> new MonflabsRhinoExecutor(false);
+            case RHINO_MONFLABS_COMPILED -> new MonflabsRhinoExecutor(true);
             case GRAALJS_INTERPRETED -> new GraalJSExecutor(false);
             case GRAALJS_COMPILED -> new GraalJSExecutor(true);
             case V8_JAVET -> new JavetExecutor();
