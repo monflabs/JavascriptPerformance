@@ -36,8 +36,8 @@ cd ../rhino   # peer checkout, next to this project
 ./gradlew :rhino:publishToMavenLocal :rhino-tools:publishToMavenLocal -x test
 ```
 
-The version is `rhino.monflabs.version` in this project's `pom.xml` (a `-SNAPSHOT`, so republishing
-and rebuilding this project picks up the new engine). The fork lives in the
+The version is `rhino.monflabs.version` in this project's `pom.xml` (`2026.0`). Republishing it
+to `~/.m2` and rebuilding this project picks up the new engine. The fork lives in the
 `org.monflabs.mozilla` packages, so it sits next to upstream Rhino on one classpath. It runs in its
 `VERSION_ECMASCRIPT` language version; upstream Rhino runs in `VERSION_ES6`.
 
