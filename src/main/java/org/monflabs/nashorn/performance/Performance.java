@@ -34,7 +34,7 @@ import org.monflabs.nashorn.performance.ScriptExecutor.ENGINE;
  * Entry point: {@code java -jar nashorn-performance-*-all.jar [options]}.
  *
  * <pre>
- *   --suites=octane,sunspider,ubench,v8-benchmarks,intrinsics,web-tooling
+ *   --suites=octane,sunspider,ubench,v8-benchmarks,intrinsics,web-tooling,jetstream3
  *                                                     (default: the first four)
  *   --engines=NASHORN_MONFLABS,NASHORN_OPENJDK,...    (default: COMPILED)
  *                                                      also accepts, in place of or mixed with
@@ -63,7 +63,8 @@ public final class Performance {
             "ubench", "ubench",
             "v8-benchmarks", "v8-benchmarks-v6",
             "intrinsics", "intrinsics",
-            "web-tooling", "web-tooling-0.5.3");
+            "web-tooling", "web-tooling-0.5.3",
+            "jetstream3", "jetstream-3.0");
 
     private static final List<String> DEFAULT_SUITES =
             List.of("octane", "sunspider", "ubench", "v8-benchmarks");

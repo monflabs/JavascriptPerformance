@@ -102,7 +102,7 @@ java -jar target/javascript-performance-1.0.0-SNAPSHOT-all.jar \
 
 | Option | Default | Notes |
 | --- | --- | --- |
-| `--suites=` | `octane,sunspider,ubench,v8-benchmarks` | comma-separated; `intrinsics` and `web-tooling` are opt-in (see below) |
+| `--suites=` | `octane,sunspider,ubench,v8-benchmarks` | comma-separated; `intrinsics`, `web-tooling` and `jetstream3` are opt-in (see below) |
 | `--engines=` | `COMPILED` | comma-separated; each token is an individual `ScriptExecutor.ENGINE` name or one of the pseudo-groups below, matched case-insensitively (and freely mixable, e.g. `--engines=NASHORN,V8_JAVET`) |
 | `--octane-benchmarks=` | an 11-file subset | comma-separated; `code-load`, `typescript*`, `zlib*` excluded by default |
 | `--warmup=N` | `2` | untimed iterations before the timed run |
@@ -317,6 +317,32 @@ real-world code and how fast.
   v0.5.3, builds one bundle per workload with webpack (Node 16) and writes the suite, its
   `base.js` and its fingerprints.
 
+### The `jetstream3` suite: JetStream 3.0's JavaScript workloads
+
+`--suites=jetstream3` (opt-in) runs the JavaScript workloads of the default list of
+[JetStream 3.0](https://github.com/WebKit/JetStream) that the other suites do not already cover: 39 of
+its 86. Left out are the 12 WebAssembly workloads, which not every engine here supports, and those of
+Octane, SunSpider and the Web Tooling Benchmark (JetStream bundles newer versions of the latter's
+libraries). Among the 39: ARES-6 (Air, Basic, Babylon, ML), RexBench, SeaMonster, the class-fields
+raytracers, BigInt (noble-ed25519), Proxy (MobX, Vue), generators and async functions, startup of large
+bundles (Babylon.js, MobX, jsdom with d3, Prism, React server-side rendering), three.js, TypeScript and
+WSL.
+
+- Each file is one workload with the files it preloads (compressed ones inflated). Its sources are
+  wrapped in a function called on the first run, so they are loaded once per executor; `base.js` shims
+  what JetStream's shell driver provides (`JetStream.getString`/`getBinary`, `console.assert` that throws,
+  a seeded `Math.random`, and `setTimeout` on the job queue when the engine has none).
+- Each timed run is one run of the workload as JetStream's driver does it - a new `Benchmark`, its
+  `init`, its iterations and its `validate` - with a tenth of JetStream's iteration count (at least one),
+  since the harness repeats the runs itself. JetStream's own `validate` (or the checks inside the
+  workloads) makes a wrong result fail; an asynchronous workload's outcome is checked at the start of
+  the next run, as in `intrinsics`.
+- The files are generated, about 79 MB: `tools/jetstream3/build.sh` checks JetStream out at its
+  `JetStream3.0` branch, reads its benchmark list from `JetStreamDriver.js` in a Node VM and writes the
+  suite. Node 16 builds it; its V8 runs every workload, given `RegExp.escape`.
+- Slow on the interpreted engines: startup workloads evaluate megabytes of source per iteration (about
+  50 s per run on the Rhino fork), WSL about 20 s compiled.
+
 ## History
 
 Extracted from the `performance` module of [monflabs/nashorn](https://github.com/monflabs/nashorn)
@@ -330,5 +356,5 @@ It is on Maven Central now and lives on `main`; that branch is obsolete.
 This project is licensed under the [Apache License, Version 2.0](LICENSE).
 
 The benchmark suites vendored under `src/main/resources/benchmarks/` (SunSpider, the V8
-benchmarks, Octane, ubench, the Web Tooling Benchmark and the libraries it bundles) are third-party code and remain under their own original
+benchmarks, Octane, ubench, the Web Tooling Benchmark, JetStream and the libraries they bundle) are third-party code and remain under their own original
 licenses, as stated in those files.
