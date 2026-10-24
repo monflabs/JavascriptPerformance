@@ -102,7 +102,7 @@ java -jar target/javascript-performance-1.0.0-SNAPSHOT-all.jar \
 
 | Option | Default | Notes |
 | --- | --- | --- |
-| `--suites=` | `octane,sunspider,ubench,v8-benchmarks` | comma-separated; `intrinsics` is opt-in (see below) |
+| `--suites=` | `octane,sunspider,ubench,v8-benchmarks` | comma-separated; `intrinsics` and `web-tooling` are opt-in (see below) |
 | `--engines=` | `COMPILED` | comma-separated; each token is an individual `ScriptExecutor.ENGINE` name or one of the pseudo-groups below, matched case-insensitively (and freely mixable, e.g. `--engines=NASHORN,V8_JAVET`) |
 | `--octane-benchmarks=` | an 11-file subset | comma-separated; `code-load`, `typescript*`, `zlib*` excluded by default |
 | `--warmup=N` | `2` | untimed iterations before the timed run |
@@ -292,6 +292,31 @@ To measure asynchronous work, the executors drain the job queue inside the timed
 `processMicrotasks()`, Javet `await()`, and the Monflabs Nashorn engine is created with
 `--event-loop` (this applies to every suite).
 
+### The `web-tooling` suite: real libraries, checked results
+
+`--suites=web-tooling` (opt-in) runs the 18 workloads of the
+[Web Tooling Benchmark](https://github.com/v8/web-tooling-benchmark) v0.5.3: Acorn, Babel,
+Babel Minify, Babylon, Bublé, Chai, CoffeeScript, Espree, Esprima, JSHint, Lebab, PostCSS,
+Prepack, Prettier, source-map, Terser, TypeScript and UglifyJS, each parsing, transforming or
+generating real code (jQuery, Lodash, Vue, React components, CSS frameworks). Unlike the other
+suites, these are large modern programs - classes, arrow functions, destructuring, generators,
+`let`/`const`, scripts of 1 to 8 MB - so the suite measures both whether an engine runs
+real-world code and how fast.
+
+- Each file is one workload bundled with its library and the payloads it reads (a virtual `fs`).
+  The bundle is guarded, so it is evaluated once per executor; each timed run calls the
+  workload once (`base.js`, `run.js`): a fixed amount of work, where the benchmark's own driver
+  (benchmark.js) samples for a fixed time.
+- The first run checks the workload's result against a fingerprint computed on V8 (Node) when
+  the suite was generated (`chai`, `jshint` and `source-map` return nothing: Chai's assertions
+  throw on a wrong result). A workload that throws, does not compile, or computes something else
+  is `FAILED`. With `--warmup=0`, the check is part of the first timed run.
+- The files are named with underscores (`babel_minify.js`), so that the runner does not group
+  `babel-minify` with `babel` as a multi-part benchmark.
+- The files are generated, about 43 MB: `tools/web-tooling/build.sh` clones the benchmark at
+  v0.5.3, builds one bundle per workload with webpack (Node 16) and writes the suite, its
+  `base.js` and its fingerprints.
+
 ## History
 
 Extracted from the `performance` module of [monflabs/nashorn](https://github.com/monflabs/nashorn)
@@ -305,5 +330,5 @@ It is on Maven Central now and lives on `main`; that branch is obsolete.
 This project is licensed under the [Apache License, Version 2.0](LICENSE).
 
 The benchmark suites vendored under `src/main/resources/benchmarks/` (SunSpider, the V8
-benchmarks, Octane, ubench) are third-party code and remain under their own original
+benchmarks, Octane, ubench, the Web Tooling Benchmark and the libraries it bundles) are third-party code and remain under their own original
 licenses, as stated in those files.
