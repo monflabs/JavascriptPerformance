@@ -11,6 +11,10 @@ compared across engines. Only `run()` is timed; parsing/compiling a benchmark ha
 outside the timed loop. The project vendors its own copy of the benchmark scripts under
 `src/main/resources/benchmarks/` — nothing is fetched at build time.
 
+The same engines also run three [robustness harnesses](#robustness-harnesses), which look for
+crashes and wrong results rather than time: JavaScriptCore's stress tests, differential fuzzing
+against V8, and coverage-guided fuzzing with Jazzer.
+
 ## Prerequisite: a built `nashorn-core` (Monflabs fork)
 
 `org.monflabs.nashorn:nashorn-core` is not published to Maven Central. Build and install it
@@ -342,6 +346,119 @@ WSL.
   suite. Node 16 builds it; its V8 runs every workload, given `RegExp.escape`.
 - Slow on the interpreted engines: startup workloads evaluate megabytes of source per iteration (about
   50 s per run on the Rhino fork), WSL about 20 s compiled.
+
+## Robustness harnesses
+
+Next to the benchmarks, the project runs three harnesses that look for bugs rather than time:
+crashes, wrong results and hangs that no conformance suite covers. They live in
+`org.monflabs.nashorn.performance.robustness` and run the engines of this project, by default the
+Monflabs Rhino fork (compiled and interpreted) and the Monflabs Nashorn fork, with **V8 as the
+reference**: a difference only counts when V8 disagrees with the engine.
+
+| Harness | What it runs | What it finds |
+| --- | --- | --- |
+| `corpus` | JavaScriptCore's `JSTests/stress`: about 6,000 regression tests, many reduced from crashes | Crashes, and tests the engine fails where V8 passes |
+| `fuzz` | Programs generated at random, whose output the specification fully determines | Wrong results, reduced to a small program |
+| `tools/robustness/jazzer.sh` | Coverage-guided fuzzing ([Jazzer](https://github.com/CodeIntelligenceTesting/jazzer)) of the parsers, compilers, regexps and `JSON.parse` | Java exceptions escaping the engine on malformed input |
+
+The first two run each script in a fresh realm, the files split into shards of 100, each shard in
+a child JVM, several at a time. A script that runs past the time limit cannot be stopped portably,
+so the child reports a timeout and halts, and a new child carries on after that file; a JVM that
+dies costs one file, not the run. Rhino's `rhino.failOnCompileFallback` is on, so a class compiler
+bug that would silently fall back to the interpreter is reported.
+
+```bash
+mvn package -DskipTests
+tools/robustness/fetch-corpora.sh                  # once: a sparse clone of WebKit, 50 MB
+R="java -cp target/javascript-performance-1.0.0-SNAPSHOT-all.jar org.monflabs.nashorn.performance.robustness.Robustness"
+$R corpus                                          # ~25 minutes on 8 cores
+$R fuzz --count=1000 --seed=1                      # ~10 minutes
+tools/robustness/jazzer.sh RhinoCompile 600        # one target, 10 minutes
+```
+
+Each run writes `report.md` (a summary table, then the findings grouped by engine and error),
+`findings.tsv` and `results.tsv` (every file on every engine) under `target/robustness/<corpus>/`.
+
+### What counts
+
+Each engine's outcome (OK, THROW for an uncaught JavaScript exception, TIMEOUT, CRASH for a Java
+exception escaping the engine or a JVM that died) is compared with V8's:
+
+| Category | Meaning | Counted |
+| --- | --- | --- |
+| `crash` | A Java exception escaped the engine (`NullPointerException`, `ClassCastException`, a compiler assertion, ...), whatever V8 did | yes |
+| `limit` | The stack or the heap ran out as a Java `StackOverflowError` or `OutOfMemoryError`, which a script cannot catch and which can take the JVM down | yes |
+| `fails` | The engine throws where V8 completes | yes |
+| `backends` | Rhino's class compiler and interpreter disagree | yes |
+| `output`, `other_error`, `accepts` | Different output, another error than V8's, or completing where V8 throws | for `fuzz` only |
+| `message` | Fails a test's check of an error message's wording (`bad error: TypeError: ...`) | no |
+| `timeout` | Times out where V8 completes: usually slowness | no |
+
+A test of the corpus checks itself and throws when something is wrong, so for `corpus` completing
+is passing, and an output or error that differs from V8's is reported but not counted: JSC's tests
+print diagnostics and assert JSC's own error messages. A generated program prints everything it
+computes, so for `fuzz` any difference counts.
+
+`--baseline=<file>` fails the run (exit status 1) on a counted finding that the file does not list,
+and `--write-baseline=<file>` writes the run's findings to such a file, so that a run can guard
+against new findings once the known ones are recorded.
+
+Options shared by `corpus` and `fuzz`: `--engines=` (any of `RHINO_MONFLABS_COMPILED`,
+`RHINO_MONFLABS_INTERPRETED`, `NASHORN_MONFLABS`, `RHINO_COMPILED`, `RHINO_INTERPRETED`,
+`GRAALJS_INTERPRETED`, `V8_JAVET`), `--reference=V8_JAVET|none`, `--jobs=N` (child JVMs at a
+time, default half the cores), `--shard=N`, `--timeout=ms` (20 s for a corpus, 10 s for fuzz),
+`--out=dir`. `corpus` also takes `--corpus=jsc-stress|dir --root=<dir>` (any directory of `.js`
+files, judged on completion) and `--filter=<text>`.
+
+### The JSC stress corpus
+
+`JSTests/stress` exercises JavaScriptCore's JITs, so its tests are dense in the corners an
+optimizing compiler gets wrong: integer overflow, holes, prototype changes during a loop, deep
+recursion, huge strings. They call a few functions of the `jsc` shell. Those that only steer
+JSC's tiers (`noInline`, `OSRExit`, `fullGC`, ...) are shimmed as no-ops, `detachArrayBuffer` is
+`ArrayBuffer.prototype.transfer`, and a test is skipped when it needs one with real semantics
+(`$vm`, `createGlobalObject`, `load`, `drainMicrotasks`, ...), a JSC feature flag, a module, or the
+legacy `f.caller`/`f.arguments`, or when JSC marks it as a memory hog or slow
+(`-Drobustness.includeHeavy=true` runs those). That leaves about 4,300 of the 5,950 files. A test
+V8 fails as well is JSC-specific and does not count.
+
+### Differential fuzzing
+
+`ProgramGenerator` writes programs of 10 to 30 top-level statements, each in a `try` of its own,
+over variables, functions, generators and classes (fields, private members, accessors,
+inheritance), with destructuring, spread, closures, labeled loops, `switch`, getters, proxies,
+BigInt, regexps, iterator helpers, promises and async functions, and about fifty built-in methods.
+Everything they print goes through a `__p` that shows a value without relying on anything an engine
+may choose; implementation-defined corners (`Date`, `Math.random`, locales, transcendental `Math`,
+`Function.prototype.toString`, error messages, inconsistent comparators) are never generated.
+Programs terminate: loops have literal bounds, and every loop iteration and call counts against a
+budget that throws a `RangeError` at the same point on every engine.
+
+The same seed always generates the same program (`--seed`, `--count`; `generate` writes them
+without running them). After the run, each counted difference is reduced: the reducer removes
+the program's statements and declarations one at a time, keeping each removal after which the
+engine still disagrees with V8 the same way, and writes the result to `reduced/`, runnable as it
+is in any shell (or Node). Up to `--max-reduce=10` per engine.
+
+### Jazzer
+
+`tools/robustness/jazzer.sh <Target> [seconds]` runs one fuzz target of
+`org.monflabs.nashorn.performance.robustness.jazzer` under Jazzer, coverage-guided over the
+engines' own classes, with a dictionary of JavaScript tokens (`tools/robustness/javascript.dict`):
+
+| Target | What it does with the fuzzer's bytes |
+| --- | --- |
+| `RhinoCompile`, `NashornCompile` | Parses and compiles them as a script (Rhino in both backends) |
+| `RhinoEval` | Compiles and runs them, within a budget of 100,000 instructions |
+| `RhinoRegExp`, `NashornRegExp` | Compiles a pattern with flags and runs it on a short subject |
+| `RhinoJson`, `NashornJson` | Parses them as JSON and checks the value survives a round trip |
+
+A JavaScript error is an expected outcome; a Java exception that escapes is a finding. The corpus
+Jazzer grows is kept in `target/robustness/jazzer/<Target>/corpus`, so the next run continues from
+it; the JSC tests seed the compile and eval targets. Findings, each an input with its stack trace,
+go to `target/robustness/jazzer/<Target>/findings`; `tools/robustness/jazzer.sh <Target> 0
+<finding>` replays one. Jazzer is a `provided` dependency: the script fetches its jars, it is not in
+the shaded jar.
 
 ## History
 

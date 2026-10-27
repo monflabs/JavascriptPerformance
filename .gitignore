@@ -5,3 +5,7 @@ target/
 .project
 .classpath
 .settings/
+
+# Robustness corpora, fetched by tools/robustness/fetch-corpora.sh
+/corpora/
+/Crash_*.java

@@ -78,6 +78,8 @@ limitations under the License.
     <galta.version>0.8.0</galta.version>
 
     <testng.version>7.10.2</testng.version>
+    <!-- Coverage-guided fuzzing of the engines' parsers (tools/robustness/jazzer.sh) -->
+    <jazzer.version>0.24.0</jazzer.version>
 
     <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
     <maven.surefire.plugin.version>3.2.5</maven.surefire.plugin.version>
@@ -154,6 +156,14 @@ limitations under the License.
       <groupId>org.monflabs.galta</groupId>
       <artifactId>js</artifactId>
       <version>${galta.version}</version>
+    </dependency>
+    <dependency>
+      <!-- Only the fuzz targets compile against it; tools/robustness/jazzer.sh puts the full
+           Jazzer jar on the classpath when it runs them, so it is not shaded into the jar. -->
+      <groupId>com.code-intelligence</groupId>
+      <artifactId>jazzer-api</artifactId>
+      <version>${jazzer.version}</version>
+      <scope>provided</scope>
     </dependency>
     <dependency>
       <groupId>org.testng</groupId>
