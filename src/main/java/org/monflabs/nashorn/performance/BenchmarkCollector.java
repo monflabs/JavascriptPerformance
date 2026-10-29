@@ -40,7 +40,8 @@ public class BenchmarkCollector {
     // Indexed by ENGINE.ordinal(); one fixed color per engine so the same engine reads the same
     // color across every chart in the report.
     private static final String[] ENGINE_COLORS = {
-            "#2563eb", "#7c3aed", "#059669", "#10b981", "#d97706", "#dc2626", "#0891b2", "#be185d", "#65a30d"
+            "#2563eb", "#7c3aed", "#059669", "#10b981", "#d97706", "#dc2626", "#0891b2", "#be185d", "#65a30d",
+            "#9333ea", "#ea580c", "#4d7c0f", "#0e7490"
     };
 
     private static final int CHART_WIDTH = 460;
@@ -199,7 +200,7 @@ public class BenchmarkCollector {
     private void appendLegend(StringBuilder b, ENGINE[] engines) {
         b.append("<div class=\"legend\">");
         for (ENGINE engine : engines) {
-            b.append("<span><span class=\"swatch\" style=\"background:").append(ENGINE_COLORS[engine.ordinal()])
+            b.append("<span><span class=\"swatch\" style=\"background:").append(ENGINE_COLORS[engine.ordinal() % ENGINE_COLORS.length])
              .append("\"></span>").append(escapeHtml(engine.name())).append("</span>");
         }
         b.append("</div>\n");
@@ -251,7 +252,7 @@ public class BenchmarkCollector {
         for (int i = 0; i < n; i++) {
             int x = BAR_GAP + i * (barWidth + BAR_GAP);
             ENGINE engine = engines[i];
-            String color = ENGINE_COLORS[engine.ordinal()];
+            String color = ENGINE_COLORS[engine.ordinal() % ENGINE_COLORS.length];
             Status status = r.status[engine.ordinal()];
             long wallTimeMs = r.wallTimeMs[engine.ordinal()];
             b.append("<g><title>").append(escapeHtml(engine.name())).append(": ")

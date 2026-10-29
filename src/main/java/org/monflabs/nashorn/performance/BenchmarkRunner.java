@@ -80,6 +80,15 @@ public class BenchmarkRunner {
     /** What the CLI's {@code RHINO} pseudo-option resolves to: the Monflabs fork and upstream, compiled. */
     public static final ENGINE[] RHINO_ENGINES = {ENGINE.RHINO_MONFLABS_COMPILED, ENGINE.RHINO_COMPILED};
 
+    /**
+     * What the CLI's {@code RHINO_VERSIONS} pseudo-option resolves to: upstream Rhino, the Monflabs
+     * fork under {@code VERSION_ES6} (upstream's language, with the fork's engine) and under
+     * {@code VERSION_ECMASCRIPT}, compiled and then interpreted.
+     */
+    public static final ENGINE[] RHINO_VERSION_ENGINES = {
+            ENGINE.RHINO_COMPILED, ENGINE.RHINO_MONFLABS_ES6_COMPILED, ENGINE.RHINO_MONFLABS_COMPILED,
+            ENGINE.RHINO_INTERPRETED, ENGINE.RHINO_MONFLABS_ES6_INTERPRETED, ENGINE.RHINO_MONFLABS_INTERPRETED};
+
     private static final Map<String, FileSystem> JAR_FILESYSTEMS = new ConcurrentHashMap<>();
 
     /**
@@ -92,6 +101,12 @@ public class BenchmarkRunner {
         void accept(String suite, String file, ENGINE engine, Status status, long wallMs, long cpuMs);
     }
 
+    /** Where a memory measurement goes, in memory mode ({@link #setMemorySink}). */
+    @FunctionalInterface
+    public interface MemorySink {
+        void accept(String suite, String file, ENGINE engine, Status status, MemoryWatch.Sample sample);
+    }
+
     private final BenchmarkCollector collector = new BenchmarkCollector();
     private final ENGINE[] engines;
 
@@ -99,6 +114,9 @@ public class BenchmarkRunner {
     private int runIterations = DEFAULT_ITERATIONS;
     private ResultSink sink;
     private boolean recordMinimum;
+    private MemorySink memorySink;
+    private String onlyFile;
+    private List<String> listing;
 
     public BenchmarkRunner() {
         this(ALL_ENGINES);
@@ -149,6 +167,53 @@ public class BenchmarkRunner {
         this.recordMinimum = recordMinimum;
     }
 
+    /**
+     * Measures memory instead of time: every benchmark is run through {@link MemoryWatch}, and its
+     * figures go here. The warmup and iteration counts apply as they do to time.
+     */
+    public void setMemorySink(MemorySink memorySink) {
+        this.memorySink = memorySink;
+    }
+
+    /**
+     * Memory mode: what the engine costs before any benchmark, as the figures of an empty script,
+     * reported as the file {@code empty} of the suite {@code engine}. The first benchmark of a JVM
+     * would otherwise be charged with loading the engine's runtime.
+     */
+    public void measureEngineFootprint() {
+        for (ENGINE engine : engines) {
+            ScriptExecutor ex = createEngine(engine);
+            if (!ex.isSupported()) {
+                memorySink.accept("engine", "empty", engine, Status.NOT_AVAILABLE, null);
+                continue;
+            }
+            try {
+                try {
+                    memorySink.accept("engine", "empty", engine, Status.OK,
+                            MemoryWatch.measure(ex, "", "empty.js", 0, 1));
+                } finally {
+                    ex.terminate();
+                }
+            } catch (Throwable t) {
+                memorySink.accept("engine", "empty", engine, Status.FAILED, null);
+                System.out.println("    " + engine.name() + " *** FAILED ***, " + t);
+            }
+        }
+    }
+
+    /** Runs only the benchmark {@code <suite folder>/<file name>}, as {@link #list} names it. */
+    public void setOnlyFile(String onlyFile) {
+        this.onlyFile = onlyFile;
+    }
+
+    /**
+     * Lists instead of running: the suites then add every benchmark they would run to this list,
+     * as {@code <suite folder>/<file name>}, the form {@link #setOnlyFile} takes.
+     */
+    public void setListing(List<String> listing) {
+        this.listing = listing;
+    }
+
     private void record(String suite, String file, ENGINE engine, Status status, long wallMs, long cpuMs) {
         if (sink != null) {
             sink.accept(suite, file, engine, status, wallMs, cpuMs);
@@ -165,6 +230,8 @@ public class BenchmarkRunner {
             case RHINO_COMPILED -> new RhinoExecutor(true);
             case RHINO_MONFLABS_INTERPRETED -> new MonflabsRhinoExecutor(false);
             case RHINO_MONFLABS_COMPILED -> new MonflabsRhinoExecutor(true);
+            case RHINO_MONFLABS_ES6_INTERPRETED -> new MonflabsRhinoExecutor(false, false);
+            case RHINO_MONFLABS_ES6_COMPILED -> new MonflabsRhinoExecutor(true, false);
             case GRAALJS_INTERPRETED -> new GraalJSExecutor(false);
             case GRAALJS_COMPILED -> new GraalJSExecutor(true);
             case V8_JAVET -> new JavetExecutor();
@@ -225,7 +292,12 @@ public class BenchmarkRunner {
         for (Map.Entry<Path, List<Path>> entry : groups.entrySet()) {
             Path mainFile = entry.getKey();
             if (filter == null || filter.test(mainFile)) {
-                runFile(suite, folder, mainFile, entry.getValue());
+                String name = suite + "/" + mainFile.getFileName();
+                if (listing != null) {
+                    listing.add(name);
+                } else if (onlyFile == null || onlyFile.equals(name)) {
+                    runFile(suite, folder, mainFile, entry.getValue());
+                }
             }
         }
     }
@@ -342,7 +414,11 @@ public class BenchmarkRunner {
             System.out.println("START " + engine.name());
             ScriptExecutor ex = createEngine(engine);
             if (!ex.isSupported()) {
-                record(suite, fileName, engine, Status.NOT_AVAILABLE, 0, 0);
+                if (memorySink != null) {
+                    memorySink.accept(suite, fileName, engine, Status.NOT_AVAILABLE, null);
+                } else {
+                    record(suite, fileName, engine, Status.NOT_AVAILABLE, 0, 0);
+                }
                 System.out.println("    " + engine.name() + " *** N/A (not available on this JVM) ***");
                 System.out.println("END " + engine.name());
                 continue;
@@ -385,6 +461,19 @@ public class BenchmarkRunner {
                 }
 
                 String script = sb.toString();
+                if (memorySink != null) {
+                    try {
+                        MemoryWatch.Sample sample = MemoryWatch.measure(ex, script, file.toString(),
+                                warmupIterations, runIterations);
+                        memorySink.accept(suite, fileName, engine, Status.OK, sample);
+                        System.out.println("    " + engine.name() + ", retained "
+                                + sample.retainedAfterRun() / 1024 + " KB, " + sample.allocPerRun() / 1024
+                                + " KB allocated per run");
+                    } finally {
+                        ex.terminate();
+                    }
+                    continue;
+                }
                 ex.init(script, file.toString());
                 try {
                     PerformanceWatch watch = new PerformanceWatch(fileName);
@@ -399,7 +488,11 @@ public class BenchmarkRunner {
                     ex.terminate();
                 }
             } catch (Throwable t) {
-                record(suite, fileName, engine, Status.FAILED, 0, 0);
+                if (memorySink != null) {
+                    memorySink.accept(suite, fileName, engine, Status.FAILED, null);
+                } else {
+                    record(suite, fileName, engine, Status.FAILED, 0, 0);
+                }
                 System.out.println("    " + engine.name() + " *** FAILED ***, " + t);
             } finally {
                 System.out.println("END " + engine.name());

@@ -42,7 +42,10 @@ import org.monflabs.nashorn.performance.ScriptExecutor.ENGINE;
  *                                                      Nashorns, Rhino compiled, GraalJS compiled,
  *                                                      V8, GaltaJS compiled), ALL (every engine,
  *                                                      compiled group first, interpreted group
- *                                                      next), NASHORN (both Nashorns only)
+ *                                                      next), NASHORN (both Nashorns only),
+ *                                                      RHINO_VERSIONS (upstream Rhino, the fork
+ *                                                      under ES6, under ECMASCRIPT; compiled,
+ *                                                      then interpreted)
  *   --octane-benchmarks=box2d,crypto,...              (default: an 11-file subset)
  *   --warmup=N                                        (default: 2)
  *   --iterations=N                                    (default: 5)
@@ -51,8 +54,14 @@ import org.monflabs.nashorn.performance.ScriptExecutor.ENGINE;
  *   --isolate=true|false                              (default: true - one JVM per engine,
  *                                                      rounds interleaved; see {@link IsolatedRunner})
  *   --rounds=N                                        (default: 3, must be odd) JVMs per engine
+ *   --memory                                          measure memory instead of time (see
+ *                                                      {@link MemoryWatch}), one JVM per engine
+ *                                                      and benchmark
+ *   --memory-report=path/to/memory.csv                (default: target/memory-report.csv)
  *   --child-engine=ENGINE                             internal: run this one engine in-process
  *                                                      and print its measurements for a parent
+ *   --child-memory=ENGINE --only-file=SUITE/FILE      internal: the same, in memory mode, for
+ *                                                      one benchmark
  * </pre>
  */
 public final class Performance {
@@ -76,7 +85,8 @@ public final class Performance {
             "COMPILED", BenchmarkRunner.COMPILED_ENGINES,
             "ALL", concat(BenchmarkRunner.COMPILED_ENGINES, BenchmarkRunner.INTERPRETED_ENGINES),
             "NASHORN", BenchmarkRunner.NASHORN_ENGINES,
-            "RHINO", BenchmarkRunner.RHINO_ENGINES);
+            "RHINO", BenchmarkRunner.RHINO_ENGINES,
+            "RHINO_VERSIONS", BenchmarkRunner.RHINO_VERSION_ENGINES);
 
     // The default when --engines is absent or blank.
     private static final List<ENGINE> DEFAULT_ENGINES = List.of(BenchmarkRunner.COMPILED_ENGINES);
@@ -105,7 +115,30 @@ public final class Performance {
             return;
         }
 
+        String childMemory = options.get("child-memory");
+        if (childMemory != null && !childMemory.isBlank()) {
+            runMemoryChild(ENGINE.valueOf(childMemory), options.get("only-file"), suites, octaneBenchmarks,
+                    warmup, iterations);
+            return;
+        }
+
         List<ENGINE> engines = resolveEngines(splitOr(options.get("engines"), null));
+        if (options.containsKey("memory")) {
+            Path memoryReport = Path.of(options.getOrDefault("memory-report", "target/memory-report.csv"));
+            long memoryStart = System.nanoTime();
+            BenchmarkRunner lister = new BenchmarkRunner();
+            List<String> files = new ArrayList<>();
+            lister.setListing(files);
+            runSuites(lister, suites, octaneBenchmarks);
+            MemoryRunner memoryRunner = new MemoryRunner(engines, files, childArgs(args));
+            memoryRunner.run();
+            Files.createDirectories(memoryReport.toAbsolutePath().getParent());
+            Files.writeString(memoryReport, memoryRunner.csv(), StandardCharsets.UTF_8);
+            System.out.println(memoryRunner.toConsoleTable());
+            System.out.println("Memory report written to " + memoryReport.toAbsolutePath());
+            System.out.println("Execution time: " + formatDuration(Duration.ofNanos(System.nanoTime() - memoryStart)));
+            return;
+        }
         Path report = Path.of(options.getOrDefault("report", "target/performance-report.csv"));
         Path htmlReport = Path.of(options.getOrDefault("html-report", "target/performance-report.html"));
 
@@ -157,12 +190,37 @@ public final class Performance {
     }
 
     /**
+     * The child half of {@link MemoryRunner}: one engine and one benchmark, in this JVM, in memory
+     * mode; {@value MemoryRunner#ENGINE_FOOTPRINT} for the engine's own footprint.
+     */
+    private static void runMemoryChild(ENGINE engine, String onlyFile, List<String> suites,
+            List<String> octaneBenchmarks, int warmup, int iterations) throws IOException {
+        BenchmarkRunner runner = new BenchmarkRunner(engine);
+        runner.setWarmupIterations(warmup);
+        runner.setRunIterations(iterations);
+        BenchmarkRunner.MemorySink print = (suite, file, e, status, sample) ->
+                System.out.println(MemoryRunner.memoryLine(suite, file, e, status, sample));
+        if (MemoryRunner.ENGINE_FOOTPRINT.equals(onlyFile)) {
+            runner.setMemorySink(print);
+            runner.measureEngineFootprint();
+            return;
+        }
+        // Load the engine on an empty script first, unreported, so that a benchmark's figures
+        // leave out the engine's fixed cost: its classes and first realm (the engine/empty row).
+        runner.setMemorySink((suite, file, e, status, sample) -> { });
+        runner.measureEngineFootprint();
+        runner.setMemorySink(print);
+        runner.setOnlyFile(onlyFile);
+        runSuites(runner, suites, octaneBenchmarks);
+    }
+
+    /**
      * The arguments a child inherits: everything but the options that select engines or govern
      * the isolation itself, which {@link IsolatedRunner} supplies per child.
      */
     private static List<String> childArgs(String[] args) {
         Set<String> dropped = Set.of("engines", "rounds", "isolate", "report", "html-report",
-                "child-engine");
+                "child-engine", "memory", "memory-report", "child-memory", "only-file");
         List<String> kept = new ArrayList<>();
         for (String arg : args) {
             int eq = arg.indexOf('=');

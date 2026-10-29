@@ -100,23 +100,7 @@ public final class IsolatedRunner {
     }
 
     private void runChild(ENGINE engine) throws IOException {
-        List<String> command = new ArrayList<>();
-        command.add(System.getProperty("java.home") + "/bin/java");
-        // The parent's own JVM arguments (module opens, agents, -D properties a benchmark reads)
-        // minus anything that would fight the pinned heap below.
-        for (String arg : ManagementFactory.getRuntimeMXBean().getInputArguments()) {
-            if (arg.startsWith("-Xms") || arg.startsWith("-Xmx") || arg.endsWith("GC")) {
-                continue;
-            }
-            command.add(arg);
-        }
-        command.addAll(HEAP_ARGS);
-        command.add("-cp");
-        command.add(System.getProperty("java.class.path"));
-        command.add(Performance.class.getName());
-        command.addAll(childArgs);
-        command.add("--child-engine=" + engine.name());
-
+        List<String> command = childCommand(childArgs, "--child-engine=" + engine.name());
         Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
@@ -143,6 +127,31 @@ public final class IsolatedRunner {
             // missing rows will show as blanks rather than as silently good numbers.
             System.out.println("*** " + engine.name() + " child exited with " + exit + " ***");
         }
+    }
+
+    /**
+     * The command line of a child: this JVM's own arguments (module opens, agents, -D properties a
+     * benchmark reads) minus anything that would fight the pinned heap, the pinned heap, and
+     * {@link Performance}'s main with {@code childArgs} and the one argument that makes it a child.
+     */
+    static List<String> childCommand(List<String> childArgs, String childArg) {
+        List<String> command = new ArrayList<>();
+        command.add(System.getProperty("java.home") + "/bin/java");
+        // The parent's own JVM arguments (module opens, agents, -D properties a benchmark reads)
+        // minus anything that would fight the pinned heap below.
+        for (String arg : ManagementFactory.getRuntimeMXBean().getInputArguments()) {
+            if (arg.startsWith("-Xms") || arg.startsWith("-Xmx") || arg.endsWith("GC")) {
+                continue;
+            }
+            command.add(arg);
+        }
+        command.addAll(HEAP_ARGS);
+        command.add("-cp");
+        command.add(System.getProperty("java.class.path"));
+        command.add(Performance.class.getName());
+        command.addAll(childArgs);
+        command.add(childArg);
+        return command;
     }
 
     /** Formats one measurement for a child to print. */

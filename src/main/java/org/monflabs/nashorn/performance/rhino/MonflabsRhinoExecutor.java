@@ -28,17 +28,30 @@ import org.monflabs.nashorn.performance.ScriptExecutor;
 public class MonflabsRhinoExecutor extends ScriptExecutor {
 
     private final boolean compiled;
+    private final boolean ecmascript;
     private Context context;
     private TopLevel scope;
     private Script script;
 
     public MonflabsRhinoExecutor(boolean compiled) {
+        this(compiled, true);
+    }
+
+    /**
+     * @param ecmascript {@code VERSION_ECMASCRIPT} (ES2026, the fork's own language) when true,
+     *                   {@code VERSION_ES6} (upstream's language and behavior) when false
+     */
+    public MonflabsRhinoExecutor(boolean compiled, boolean ecmascript) {
         this.compiled = compiled;
+        this.ecmascript = ecmascript;
     }
 
     @Override
     public ENGINE getEngine() {
-        return compiled ? ENGINE.RHINO_MONFLABS_COMPILED : ENGINE.RHINO_MONFLABS_INTERPRETED;
+        if (ecmascript) {
+            return compiled ? ENGINE.RHINO_MONFLABS_COMPILED : ENGINE.RHINO_MONFLABS_INTERPRETED;
+        }
+        return compiled ? ENGINE.RHINO_MONFLABS_ES6_COMPILED : ENGINE.RHINO_MONFLABS_ES6_INTERPRETED;
     }
 
     @Override
@@ -50,7 +63,7 @@ public class MonflabsRhinoExecutor extends ScriptExecutor {
     @Override
     public void initEngine() throws Exception {
         context = Context.enter();
-        context.setLanguageVersion(Context.VERSION_ECMASCRIPT);
+        context.setLanguageVersion(ecmascript ? Context.VERSION_ECMASCRIPT : Context.VERSION_ES6);
         context.setInterpretedMode(!compiled);
         scope = new Global(context);
     }
